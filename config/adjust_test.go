@@ -1,0 +1,42 @@
+/*
+ * Copyright (c) 2020. Temple3x (temple3x@gmail.com)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package config
+
+import "testing"
+
+func TestAdjust(t *testing.T) {
+	defStr := "string"
+	s0 := ""
+	Adjust(&s0, defStr)
+	if s0 != defStr {
+		t.Fatal("adjust string mismatch")
+	}
+
+	defInt := 1
+	int0 := 0
+	Adjust(&int0, defInt)
+	if int0 != defInt {
+		t.Fatal("adjust int mismatch")
+	}
+
+	var defInt64 int64 = 1
+	var int640 int64
+	Adjust(&int640, defInt64)
+	if int640 != defInt64 {
+		t.Fatal("adjust int64 mismatch")
+	}
+}
