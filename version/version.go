@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+// Package version provides Codes Version information
 package version
 
 // Assigned by ldflags in build process, details see Makefile.
