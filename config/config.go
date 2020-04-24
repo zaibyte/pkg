@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// Package config implements Loading app's config & provides default settings.
+// Package config implements ability of loading app's config.
 package config
 
 import (
