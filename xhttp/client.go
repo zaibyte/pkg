@@ -188,7 +188,7 @@ func (c *Client) Do(url, method, reqID string, body io.Reader, timeout time.Dura
 	return
 }
 
-// CloseResp close http.Response gracefully.
+// CloseResp closes http.Response gracefully.
 func CloseResp(resp *http.Response) {
 	io.Copy(ioutil.Discard, resp.Body)
 	resp.Body.Close()

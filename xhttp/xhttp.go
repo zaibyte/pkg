@@ -16,7 +16,7 @@
 
 // Package xhttp provides http server & client methods.
 //
-// xhttp supports HTTP/2 (TLS or h2c) & HTTP/1.1 (if it's in h2c and the request protocol is HTTP/1).
+// xhttp supports HTTP/2 & HTTP/1.1 (if it's in h2c and the request protocol is HTTP/1).
 package xhttp
 
 import (
@@ -30,13 +30,14 @@ import (
 	"github.com/zaibyte/pkg/xlog"
 )
 
-// Reply* replies HTTP request, return the written bytes length & status code,
+// Reply replies HTTP request, return the written bytes length & status code,
 // we need the status code for access log.
+//
 // Usage:
 // As return function in http Handler.
-// Warn:
-// Be sure you have InitGlobalLogger.
 //
+// Warn:
+// Be sure you have called xlog.InitGlobalLogger.
 // If any wrong in the write resp process, it would be written into the log.
 
 // ReplyCode replies to the request with the empty message and HTTP code.
