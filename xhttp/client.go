@@ -40,8 +40,9 @@ const UserAgent = "Go-zai-xhttp"
 
 // Client is xhttp client.
 type Client struct {
-	cs []*http.Client
-	id uint64
+	cs        []*http.Client
+	id        uint64
+	addScheme func(url string) string
 }
 
 // NextClient uses Round Robin to chose a client.
@@ -52,14 +53,17 @@ func (c *Client) NextClient() *http.Client {
 	return c.cs[next]
 }
 
-var (
+const (
 	defaultClientCnt int = 16 // 16 is enough for most cases.
+)
+
+var (
 	// defaultTransport is a h2c transport and backward-compatible with HTTP/1.1.
 	defaultTransport = &http2.Transport{
 		DialTLS: func(network, addr string, cfg *tls.Config) (conn net.Conn, e error) {
 			return net.Dial(network, addr)
 		},
-		DisableCompression: true,
+		DisableCompression: true, // For zai, most objects are binary, so compression maybe useless.
 		AllowHTTP:          true,
 	}
 )
@@ -72,9 +76,11 @@ func NewDefaultClient() *Client {
 
 // NewClient creates a Client.
 // If clientCnt == 0, use defaultClientCnt.
-func NewClient(clientCnt int, transport http.RoundTripper) *Client {
+// If transport == nil, use defaultTransport.
+func NewClient(clientCnt int, transport *http2.Transport) *Client {
 
 	config.Adjust(&clientCnt, defaultClientCnt)
+
 	if transport == nil {
 		transport = defaultTransport
 	}
@@ -85,97 +91,55 @@ func NewClient(clientCnt int, transport http.RoundTripper) *Client {
 			Transport: transport,
 		}
 	}
+
+	addScheme := addHTTPScheme
+	if transport.TLSClientConfig != nil {
+		addScheme = addHTTPSScheme
+	}
+
 	return &Client{
-		cs,
-		0,
+		cs:        cs,
+		id:        0,
+		addScheme: addScheme,
 	}
 }
 
-const (
-	defaultDialTimeout = 3 * time.Second
-	// By default, the max object size is 32MB, so 3s is enough.
-	defaultRespHeaderTimeout = 3 * time.Second
-	defaultIdleConnsPerHost  = 5
-)
-
-var defaultH1Transport = newH1Transport(defaultDialTimeout, defaultRespHeaderTimeout, defaultIdleConnsPerHost)
-
-// NewDefaultH1Client creates a http.Client with default HTTP/1.1 Transport.
-func NewDefaultH1Client() *Client {
-
-	cs := make([]*http.Client, 1) // No need more than 1 client in HTTP/1.1
-	cs[0] = &http.Client{
-		Transport: defaultH1Transport,
-	}
-	return &Client{
-		cs,
-		0,
-	}
-}
-
-// NewH1Client creates a http.Client with HTTP/1.1 Transport.
-func NewH1Client(dial, resp time.Duration, maxIdle int) *Client {
-
-	cs := make([]*http.Client, 1) // No need more than 1 client in HTTP/1.1
-	cs[0] = &http.Client{
-		Transport: newH1Transport(dial, resp, maxIdle),
-	}
-	return &Client{
-		cs,
-		0,
-	}
-}
-
-func newH1Transport(dial, resp time.Duration, maxIdle int) *http.Transport {
-
-	return &http.Transport{
-		DisableCompression:    true,
-		MaxIdleConnsPerHost:   maxIdle,
-		ResponseHeaderTimeout: resp,
-
-		DialContext: (&net.Dialer{
-			Timeout:   dial,
-			KeepAlive: 75 * time.Second,
-		}).DialContext,
-	}
-}
-
+// Head sends an HTTP PUT request and returns an HTTP response.
 func (c *Client) Put(url, reqID string, body io.Reader, timeout time.Duration) (resp *http.Response, err error) {
 
-	url = addScheme(url)
-	req, err := http.NewRequest("PUT", url, body)
-	if err != nil {
-		return
-	}
-
-	return c.Do(req, reqID, timeout)
+	return c.Do(url, http.MethodPut, reqID, body, timeout)
 }
 
+// Head sends an HTTP GET request and returns an HTTP response.
 func (c *Client) Get(url, reqID string, timeout time.Duration) (resp *http.Response, err error) {
 
-	url = addScheme(url)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return
-	}
-
-	return c.Do(req, reqID, timeout)
+	return c.Do(url, http.MethodGet, reqID, nil, timeout)
 }
 
+// Head sends an HTTP DELETE request and returns an HTTP response.
 func (c *Client) Delete(url, reqID string, timeout time.Duration) (resp *http.Response, err error) {
 
-	url = addScheme(url)
-	req, err := http.NewRequest("DELETE", url, nil)
-	if err != nil {
-		return
-	}
-
-	return c.Do(req, reqID, timeout)
+	return c.Do(url, http.MethodDelete, reqID, nil, timeout)
 }
 
-func addScheme(url string) string {
-	if !strings.HasPrefix(url, "http://") {
-		url = "http://" + url
+// Head sends an HTTP HEAD request and returns an HTTP response.
+func (c *Client) Head(url, reqID string, timeout time.Duration) (resp *http.Response, err error) {
+
+	return c.Do(url, http.MethodHead, reqID, nil, timeout)
+}
+
+func addHTTPSScheme(url string) string {
+	return addScheme(url, "https://")
+}
+
+func addHTTPScheme(url string) string {
+	return addScheme(url, "http://")
+}
+
+// addScheme adds HTTP scheme if need.
+func addScheme(url string, scheme string) string {
+	if !strings.HasPrefix(url, scheme) {
+		url = scheme + url
 	}
 	return url
 }
@@ -183,17 +147,21 @@ func addScheme(url string) string {
 // Do sends an HTTP request and returns an HTTP response.
 //
 // A non-2xx status code DO cause an error.
-// All non-2xx response will be closed in zai.
+// All non-2xx response will be closed.
 //
 // On error, any Response can be ignored.
-func (c *Client) Do(req *http.Request, reqID string, timeout time.Duration) (resp *http.Response, err error) {
+func (c *Client) Do(url, method, reqID string, body io.Reader, timeout time.Duration) (resp *http.Response, err error) {
 
+	url = c.addScheme(url)
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return
+	}
 	if reqID == "" {
 		reqID = xlog.NextReqID()
 	}
 	req.Header.Set(xlog.ReqIDHeader, reqID)
 	req.Header.Set("User-Agent", UserAgent)
-
 	if timeout != 0 {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
@@ -227,8 +195,9 @@ func CloseResp(resp *http.Response) {
 }
 
 // --- Default Handle API ---- //
+// --- All HTTP Servers in zai will have these APIs ---- //
 
-// Debug open/close a server logger's debug level.
+// Debug opens/closes a server logger's debug level.
 func (c *Client) Debug(addr string, on bool, reqID string) (err error) {
 
 	cmd := "off"
@@ -236,7 +205,6 @@ func (c *Client) Debug(addr string, on bool, reqID string) (err error) {
 		cmd = "on"
 	}
 	url := addr + "/debug-log/" + cmd
-	url = addScheme(url)
 	resp, err := c.Get(url, reqID, time.Second)
 	if err != nil {
 		return
@@ -250,7 +218,6 @@ func (c *Client) Debug(addr string, on bool, reqID string) (err error) {
 func (c *Client) Version(addr, reqID string) (ver version.Info, err error) {
 
 	url := addr + "/code-version"
-	url = addScheme(url)
 	resp, err := c.Get(url, reqID, time.Second)
 	if err != nil {
 		return
@@ -261,14 +228,11 @@ func (c *Client) Version(addr, reqID string) (ver version.Info, err error) {
 	return
 }
 
-// Ping check a server health.
-// Ping also return the server's boxID,
-// it makes Keeper response boxID easier.
+// Ping checks a server health and returns the server's boxID,
 func (c *Client) Ping(addr, reqID string, timeout time.Duration) (boxID int64, err error) {
 
 	url := addr + "/ping"
-	url = addScheme(url)
-	resp, err := c.Get(url, reqID, timeout)
+	resp, err := c.Head(url, reqID, timeout)
 	if err != nil {
 		return
 	}
