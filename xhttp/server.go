@@ -119,6 +119,7 @@ func (s *Server) AddExit(f func() error) {
 }
 
 // Run starts the Server and implements graceful shutdown.
+// TODO TLS supports.
 func (s *Server) Run() {
 
 	s.srv.Handler = s.toH2CHandler()
