@@ -16,7 +16,10 @@
 
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestAdjust(t *testing.T) {
 	defStr := "string"
@@ -38,5 +41,19 @@ func TestAdjust(t *testing.T) {
 	Adjust(&int640, defInt64)
 	if int640 != defInt64 {
 		t.Fatal("adjust int64 mismatch")
+	}
+
+	var defUint32 uint32 = 1
+	var uint320 uint32
+	Adjust(&uint320, defUint32)
+	if uint320 != defUint32 {
+		t.Fatal("adjust uint32 mismatch")
+	}
+
+	var defDuration time.Duration = time.Second
+	var duration0 time.Duration
+	Adjust(&duration0, defDuration)
+	if duration0 != defDuration {
+		t.Fatal("adjust time.Duration mismatch")
 	}
 }

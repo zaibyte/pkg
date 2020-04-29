@@ -104,30 +104,6 @@ func NewClient(clientCnt int, transport *http2.Transport) *Client {
 	}
 }
 
-// Head sends an HTTP PUT request and returns an HTTP response.
-func (c *Client) Put(url, reqID string, body io.Reader, timeout time.Duration) (resp *http.Response, err error) {
-
-	return c.Do(url, http.MethodPut, reqID, body, timeout)
-}
-
-// Head sends an HTTP GET request and returns an HTTP response.
-func (c *Client) Get(url, reqID string, timeout time.Duration) (resp *http.Response, err error) {
-
-	return c.Do(url, http.MethodGet, reqID, nil, timeout)
-}
-
-// Head sends an HTTP DELETE request and returns an HTTP response.
-func (c *Client) Delete(url, reqID string, timeout time.Duration) (resp *http.Response, err error) {
-
-	return c.Do(url, http.MethodDelete, reqID, nil, timeout)
-}
-
-// Head sends an HTTP HEAD request and returns an HTTP response.
-func (c *Client) Head(url, reqID string, timeout time.Duration) (resp *http.Response, err error) {
-
-	return c.Do(url, http.MethodHead, reqID, nil, timeout)
-}
-
 func addHTTPSScheme(url string) string {
 	return addScheme(url, "https://")
 }
@@ -150,10 +126,10 @@ func addScheme(url string, scheme string) string {
 // All non-2xx response will be closed.
 //
 // On error, any Response can be ignored.
-func (c *Client) Do(url, method, reqID string, body io.Reader, timeout time.Duration) (resp *http.Response, err error) {
+func (c *Client) Request(ctx context.Context, method, url, reqID string, body io.Reader) (resp *http.Response, err error) {
 
 	url = c.addScheme(url)
-	req, err := http.NewRequest(method, url, body)
+	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
 		return
 	}
@@ -162,12 +138,6 @@ func (c *Client) Do(url, method, reqID string, body io.Reader, timeout time.Dura
 	}
 	req.Header.Set(xlog.ReqIDHeader, reqID)
 	req.Header.Set("User-Agent", UserAgent)
-	if timeout != 0 {
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
-
-		req = req.WithContext(ctx)
-	}
 
 	hc := c.NextClient()
 	resp, err = hc.Do(req)
@@ -176,13 +146,16 @@ func (c *Client) Do(url, method, reqID string, body io.Reader, timeout time.Dura
 	}
 
 	if resp.StatusCode/100 != 2 { // See ReplyError for more details.
-		buf, err2 := ioutil.ReadAll(resp.Body)
-		if err2 != nil {
-			CloseResp(resp)
-			return resp, err2
+
+		err = errors.New(http.StatusText(resp.StatusCode))
+
+		if resp.ContentLength > 0 && method != http.MethodHead {
+			buf, err2 := ioutil.ReadAll(resp.Body)
+			if err2 != nil {
+				return resp, err2
+			}
+			err = errors.New(string(buf[:len(buf)-1])) // drop \n
 		}
-		CloseResp(resp)
-		err = errors.New(string(buf[:len(buf)-1])) // drop \n
 		return
 	}
 	return
@@ -194,8 +167,10 @@ func CloseResp(resp *http.Response) {
 	resp.Body.Close()
 }
 
-// --- Default Handle API ---- //
+// --- Default API ---- //
 // --- All HTTP Servers in zai will have these APIs ---- //
+
+const defaultTimeout = 3 * time.Second
 
 // Debug opens/closes a server logger's debug level.
 func (c *Client) Debug(addr string, on bool, reqID string) (err error) {
@@ -204,8 +179,12 @@ func (c *Client) Debug(addr string, on bool, reqID string) (err error) {
 	if on {
 		cmd = "on"
 	}
-	url := addr + "/debug-log/" + cmd
-	resp, err := c.Get(url, reqID, time.Second)
+
+	url := addr + "/v1/debug-log/" + cmd
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	defer cancel()
+
+	resp, err := c.Request(ctx, http.MethodPut, url, reqID, nil)
 	if err != nil {
 		return
 	}
@@ -217,8 +196,11 @@ func (c *Client) Debug(addr string, on bool, reqID string) (err error) {
 // Version returns the code version of a server.
 func (c *Client) Version(addr, reqID string) (ver version.Info, err error) {
 
-	url := addr + "/code-version"
-	resp, err := c.Get(url, reqID, time.Second)
+	url := addr + "/v1/code-version"
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	defer cancel()
+
+	resp, err := c.Request(ctx, http.MethodGet, url, reqID, nil)
 	if err != nil {
 		return
 	}
@@ -231,8 +213,12 @@ func (c *Client) Version(addr, reqID string) (ver version.Info, err error) {
 // Ping checks a server health and returns the server's boxID,
 func (c *Client) Ping(addr, reqID string, timeout time.Duration) (boxID int64, err error) {
 
-	url := addr + "/ping"
-	resp, err := c.Head(url, reqID, timeout)
+	url := addr + "/v1/ping"
+	config.Adjust(&timeout, defaultTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	resp, err := c.Request(ctx, http.MethodHead, url, reqID, nil)
 	if err != nil {
 		return
 	}

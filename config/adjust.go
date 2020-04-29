@@ -16,6 +16,8 @@
 
 package config
 
+import "time"
+
 // Adjust val in config to default value if need.
 // val must be a pointer, and the type of defValue must be
 // as same as *val.
@@ -32,6 +34,14 @@ func Adjust(val interface{}, defValue interface{}) {
 	case *int64:
 		if *v == 0 {
 			*v = defValue.(int64)
+		}
+	case *uint32:
+		if *v == 0 {
+			*v = defValue.(uint32)
+		}
+	case *time.Duration:
+		if *v == 0 {
+			*v = defValue.(time.Duration)
 		}
 	}
 }
