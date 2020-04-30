@@ -32,7 +32,6 @@ import (
 const zeroDuration = time.Duration(0)
 
 type Config struct {
-	InstanceName string            `json:"instance_name" toml:"instance_name"`
 	PushJob      string            `json:"push_job" toml:"push_job"`
 	PushAddress  string            `json:"push_address" toml:"push_address"`
 	PushInterval typeutil.Duration `json:"push_interval" toml:"push_interval"`
@@ -44,31 +43,27 @@ const (
 )
 
 // Push metrics in background.
-func Push(cfg *Config) {
+func Push(cfg *Config, instanceID string) {
 
-	if cfg.InstanceName == "" {
-		cfg.InstanceName = makeInstanceName()
+	if len(cfg.PushAddress) == 0 || instanceID == "" || cfg.PushJob == "" {
+		xlog.Info("disable Prometheus push client")
+		return
 	}
 
 	if cfg.PushInterval.Duration == zeroDuration {
 		cfg.PushInterval.Duration = defaultPushInterval
 	}
 
-	if len(cfg.PushAddress) == 0 {
-		xlog.Info("disable Prometheus push client")
-		return
-	}
-
 	xlog.Info("start Prometheus push client")
 
-	go prometheusPushClient(cfg)
+	go prometheusPushClient(cfg, instanceID)
 }
 
-// prometheusPushClient pushs metrics to Prometheus Pushgateway.
-func prometheusPushClient(cfg *Config) {
+// prometheusPushClient pushes metrics to Prometheus Pushgateway.
+func prometheusPushClient(cfg *Config, instanceID string) {
 	pusher := push.New(cfg.PushAddress, cfg.PushJob).
 		Gatherer(prometheus.DefaultGatherer).
-		Grouping("instance", cfg.InstanceName)
+		Grouping("instance", instanceID)
 
 	for {
 		err := pusher.Push()
