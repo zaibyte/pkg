@@ -39,9 +39,9 @@ func Init(appName string) {
 		"the config file")
 }
 
-// Load app's config,
+// Load app's config returns metadata for parsing/adjusting outside,
 // process will exit if any error happens.
-func Load(cfg interface{}) {
+func Load(cfg interface{}) *toml.MetaData {
 	if !flag.Parsed() {
 		flag.Parse()
 	}
@@ -51,8 +51,9 @@ func Load(cfg interface{}) {
 		log.Fatalln(err)
 	}
 
-	err = toml.Unmarshal(data, cfg)
+	meta, err := toml.Decode(string(data), cfg)
 	if err != nil {
 		log.Fatalln(err)
 	}
+	return &meta
 }
