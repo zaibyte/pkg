@@ -20,12 +20,13 @@ package metricutil
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/push"
+	"github.com/zaibyte/pkg/config"
 	"github.com/zaibyte/pkg/typeutil"
+	iid "github.com/zaibyte/pkg/uid/instanceid"
 	"github.com/zaibyte/pkg/xlog"
 )
 
@@ -38,17 +39,18 @@ type Config struct {
 }
 
 const (
-	defaultInstanceName = "unknown"
 	defaultPushInterval = 15 * time.Second
 )
 
 // Push metrics in background.
 func Push(cfg *Config, instanceID string) {
 
-	if len(cfg.PushAddress) == 0 || instanceID == "" || cfg.PushJob == "" {
+	if len(cfg.PushAddress) == 0 || cfg.PushJob == "" {
 		xlog.Info("disable Prometheus push client")
 		return
 	}
+
+	config.Adjust(&instanceID, iid.Get())
 
 	if cfg.PushInterval.Duration == zeroDuration {
 		cfg.PushInterval.Duration = defaultPushInterval
@@ -73,12 +75,4 @@ func prometheusPushClient(cfg *Config, instanceID string) {
 
 		time.Sleep(cfg.PushInterval.Duration)
 	}
-}
-
-func makeInstanceName() string {
-	hostname, err := os.Hostname()
-	if err != nil {
-		return defaultInstanceName
-	}
-	return hostname
 }
