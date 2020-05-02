@@ -18,32 +18,6 @@
 // Don't modify it unless you totally know what will happen.
 package settings
 
-// ----- Redundancy ----- //
-const (
-	// Erasure Codes Policy.
-	// I hide this config in const, because the benefit of changing them
-	// is not much, the cost maybe higher or the durability maybe lower,
-	// 9+4 is a balanced choice.
-	//
-	// Default: 9+4, it can save 33.3% I/O when one data extent lost.
-	// ECData is the num of data extents in a group.
-	ECData = 9
-	// ECParity is the num of parity extents in a group.
-	ECParity = 4
-	// ECTotal is the num of all extents in a group.
-	ECTotal = ECData + ECParity
-)
-
-// MntRoot
-const MntRoot = "/zai" // Disk device mount path.
-
-// <DefaultLogPath>/<appName>/access.log
-// & <DefaultLogPath>/<appName>/error.log
-const DefaultLogPath = "/var/log/zai"
-
-// MaxObjSize is the maximum size of an object.
-const MaxObjSize = 32 * 1024 * 1024
-
 const (
 	kb = 1024
 	mb = kb * 1024
@@ -51,22 +25,64 @@ const (
 )
 
 const (
-	// MaxTinySize is a global setting,
-	// FrontEnd need it to choice different Write Buffer:
-	// 1. If object size <= MaxTinySize, put it into Buffer Tiny
-	// (If there is no writable group, upload will be failed. Actually we can use Buffer for this situation,
-	// but it maybe dangerous if I allow this action, because if there are too many small objects in Buffer,
-	// it may damage the performance hugely.).
-	// TODO there should be a option, let tiny object get into normal buffer
-	// 2. If object size > MaxTinySize, put it into Buffer.
+	// MaxObjSize is the maximum size of an object.
 	//
-	// Default value is 256KB.
-	// So the max number of objects in a single Buffer Tiny or Buffer extent is 65536,
-	// this small number will help to compress the index size.
-	// Maybe it's too big or too small for your business model,
-	// make sure all things could work with the new size.
-	// You can get help by develop docs/issue/email.
-	MaxTinySize  = kb * 256
-	BufExtSize   = gb * 16
-	StoreExtSize = mb * 256 // Don't set it < 256MB, because the bigger the less rows in Finder.
+	// Zai is designed for LOSF(lots of small files), although it can support
+	// much larger object, but it's better to split it then put the chunks
+	// of this object to Zai.
+	// That's because too big file may block other read/write ops
+	// and the cost of retries is higher.
+	MaxObjSize = 4 * mb
+
+	// MntRoot
+	MntRoot = "/zai" // Disk device mount path.
+
+	// DefaultLogRoot is the default log files path root.
+	// e.g.:
+	// <DefaultLogRoot>/<appName>/access.log
+	// & <DefaultLogRoot>/<appName>/error.log
+	DefaultLogRoot = "/var/log/zai"
+)
+
+/* ----- ZBuffer ----- */
+const (
+	// Replicas is the number of replicas for each extent.
+	//
+	// ZBuffer is temporary storage layer, it's meaningless to keep more than 3 replicas.
+	// But if less than it, we won't lose the ability of data consistency.
+	Replicas = 3
+
+	// BufExtSize is the size of ZBuffer's extent.
+	// There will be 131,072 extents at most in a single box with 16PB usable capacity.
+	// In practice, only part of capacity will be used as ZBuffer,
+	// for example, with 2PB usable capacity, only 16,384 extents.
+	// All extents infos could be loaded in Zai's memory cache.
+	BufExtSize = 128 * gb
+)
+
+/* ----- ZStore ----- */
+const (
+	// Erasure-Codes Policy.
+	// Because the benefit of changing them is not much,
+	// the cost maybe higher or the durability maybe lower,
+	// 12+4 is a balanced choice.
+	//
+	// It can save 33.3% I/O in reconstruction process
+	// when one data extent lost.
+	//
+	// ECDataExts is the num of data extents in a Erasure-Codes extent.
+	ECDataExts = 12
+	// ECParityExts is the num of parity extents in a Erasure-Codes extent.
+	ECParityExts = 4
+	// ECExts is the num of all extents in a Erasure-Codes extent.
+	ECExts = ECDataExts + ECParityExts
+
+	// MaxStoreExtSize is the size of ZStore's extent.
+	// There will be 67,108,864 extents at most in a single box with 16PB usable capacity.
+	// It won't be hard to search the extent by oid.
+	//
+	// The benefits of keeping ZStore extent size small:
+	// 1. Making extent could be in blocking mode. The cost of restart isn't high.
+	// 2. GC process could be in blocking mode too.
+	MaxStoreExtSize = 256 * mb
 )

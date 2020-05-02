@@ -51,7 +51,7 @@ type ServerConfig struct {
 // MakeLogger init xlog and returns access logger for http server application.
 func (c *ServerConfig) MakeLogger(appName string, boxID int64) (al *AccessLogger, err error) {
 
-	config.Adjust(&c.ErrorLogOutput, filepath.Join(settings.DefaultLogPath, appName, "error.log"))
+	config.Adjust(&c.ErrorLogOutput, filepath.Join(settings.DefaultLogRoot, appName, "error.log"))
 	config.Adjust(&c.ErrorLogLevel, "info")
 
 	el, err := NewErrorLogger(c.ErrorLogOutput, c.ErrorLogLevel, &c.Rotate)
@@ -59,7 +59,7 @@ func (c *ServerConfig) MakeLogger(appName string, boxID int64) (al *AccessLogger
 		return
 	}
 
-	config.Adjust(&c.AccessLogOutput, filepath.Join(settings.DefaultLogPath, appName, "access.log"))
+	config.Adjust(&c.AccessLogOutput, filepath.Join(settings.DefaultLogRoot, appName, "access.log"))
 	al, err = NewAccessLogger(c.AccessLogOutput, &c.Rotate)
 	if err != nil {
 		return
