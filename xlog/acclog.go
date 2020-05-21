@@ -26,11 +26,12 @@ import (
 	"time"
 )
 
-// AccessLogger is used for recording the server access log.
+// AccessLogger is used for recording the server access logs.
 type AccessLogger struct {
 	fl *FreeLogger
 }
 
+// NewAccessLogger creates an AceesLogger.
 func NewAccessLogger(outputPath string, rCfg *RotateConfig) (logger *AccessLogger, err error) {
 	fl, err := NewFreeLogger(outputPath, rCfg)
 	if err != nil {
@@ -39,22 +40,31 @@ func NewAccessLogger(outputPath string, rCfg *RotateConfig) (logger *AccessLogge
 	return &AccessLogger{fl}, nil
 }
 
-// HTTP Headers which a zai http server application must have.
+// These fields will be added in access log.
+// And they are HTTP headers in zai too.
 const (
-	ReqIDHeader = "X-zai-Request-ID" // HTTP header key of reqID.
-	BoxIDHeader = "X-zai-Box-ID"     // HTTP header key of boxID.
+	ReqIDField = "X-zai-Request-ID"
+	BoxIDField = "X-zai-Box-ID"
 )
 
-// AccessLogFmt: access logger output format.
-// It's used for log collector process(e.g. elastic/filebeat).
-//
-// fields (nginx style):
+// AccessLogFields shows access logger output fields.
+type AccessLogFields struct {
+	API           string  `json:"api"`
+	RemoteAddr    string  `json:"remote_addr"`
+	Status        int     `json:"status"`
+	BodyBytesSent int     `json:"body_bytes_sent"`
+	BodyBytesRecv int64   `json:"body_bytes_recv"`
+	RequestTime   float64 `json:"request_time"`
+	Time          string  `json:"time"`
+	ReqID         string  `json:"x-zai-request-id "`
+	BoxID         int64   `json:"x-zai-box-id"`
+}
+
 // |      name          |  type  |             detail              |		e.g		              |
 // |--------------------|--------|---------------------------------|------------------------------|
-// | api                | string | see ps 5                        | frontend.get                 |
+// | api                | string | see ps 5                        | zai.get                      |
 // | remote_addr        | string |                                 | 192.168.1.3                  |
-// | request            | string | `<method> <URI> <proto>`        | GET /a HTTP/2.0              |
-// | status             | int    |                                 | 200                          |
+// | status             | int    |  HTTP status code               | 200                          |
 // | body_bytes_sent    | int    |  response body length(written)  | 1                            |
 // | body_bytes_recv    | int64  |  request body length            | 1                            |
 // | request_time       | float64|  see ps 2                       | 1.00                         |
@@ -64,39 +74,28 @@ const (
 //
 // ps:
 // 1.body_bytes_sent
-// is not the value of Content-Length in resp header,
+// Not the value of Content-Length in resp header,
 // it's the real bytes written in resp.
 // It may return a error when writing to resp sometimes,
 // so the Content-Length will mislead us
 //
 // 2.request_time
-// request processing time in seconds with a milliseconds resolution;
+// Request processing time in seconds with a milliseconds resolution;
 // time elapsed between the first bytes were read from the client
 // and the log write after the last bytes were sent to the client
 //
 // 3. remote_addr
-// if there is a proxy in front of server, the remote_addr may be wrong
+// The request source.
+// If there is a proxy in front of server, the remote_addr may be wrong
 // so set header X-Real-IP = $remote_addr in your proxy
 //
 // 4. time
-// fmt is as the same as default logger,
-// that means error_log use this fmt too
+// Present time in ISO8601TimeFormat,
+// (error logger use this fmt to)
 //
 // 5. api
 // handle's name, is used to distinguish different requests for
 // analysing logs in the future
-type AccessLogFmt struct {
-	API           string  `json:"api"`
-	RemoteAddr    string  `json:"remote_addr"`
-	Request       string  `json:"request"`
-	Status        int     `json:"status"`
-	BodyBytesSent int     `json:"body_bytes_sent"`
-	BodyBytesRecv int64   `json:"body_bytes_recv"`
-	RequestTime   float64 `json:"request_time"`
-	Time          string  `json:"time"`
-	ReqID         string  `json:"x-zai-request-id "`
-	BoxID         int64   `json:"x-zai-box-id"`
-}
 
 // Write writes entry to AccessLogger.
 func (l *AccessLogger) Write(apiName string, r *http.Request,
@@ -111,15 +110,13 @@ func (l *AccessLogger) Write(apiName string, r *http.Request,
 	l.fl.Write(
 		String("api", apiName),
 		String("remote_addr", remoteAddr),
-		String("time", now.Format("2006-01-02T15:04:05.000Z0700")),
-		String("request",
-			strings.Join([]string{r.Method, r.RequestURI, r.Proto}, " ")),
+		String("time", now.Format(ISO8601TimeFormat)),
 		Int("status", status),
 		Int64("body_bytes_recv", r.ContentLength),
 		Int("body_bytes_sent", written),
 		Float64("request_time", round(now.Sub(start).Seconds()*1000, 2)),
-		String(strings.ToLower(ReqIDHeader), reqID),
-		Int64(strings.ToLower(BoxIDHeader), _boxID),
+		String(strings.ToLower(ReqIDField), reqID),
+		Int64(strings.ToLower(BoxIDField), _boxID),
 	)
 }
 
@@ -144,7 +141,7 @@ func round(f float64, n int) float64 {
 var _pid = uint32(os.Getpid())
 
 // NextReqID returns a request ID.
-// warn: maybe not unique.
+// warn: maybe not unique but it's acceptable.
 func NextReqID() string {
 	var b [12]byte
 	binary.LittleEndian.PutUint32(b[:], _pid)

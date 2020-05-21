@@ -48,7 +48,7 @@ type ServerConfig struct {
 	Rotate          RotateConfig `toml:"rotate"`
 }
 
-// MakeLogger init xlog and returns access logger for http server application.
+// MakeLogger init xlog and returns access logger for application.
 func (c *ServerConfig) MakeLogger(appName string, boxID int64) (al *AccessLogger, err error) {
 
 	config.Adjust(&c.ErrorLogOutput, filepath.Join(settings.DefaultLogRoot, appName, "error.log"))
@@ -74,7 +74,6 @@ func (c *ServerConfig) MakeLogger(appName string, boxID int64) (al *AccessLogger
 // TimeFormat is used for parsing log entry's time field.
 const (
 	ISO8601TimeFormat = "2006-01-02T15:04:05.000Z0700"
-	DefaultTimeFormat = ISO8601TimeFormat
 )
 
 // Types here for hiding zap, don't need to know zap outside.

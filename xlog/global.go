@@ -24,7 +24,7 @@ import (
 
 var (
 	_global *ErrorLogger
-	_boxID  int64 // xlog only need string.
+	_boxID  int64
 )
 
 // Init Global var.
@@ -85,42 +85,43 @@ func Panic(msg string, f ...zap.Field) {
 	_global.Panic(msg, f...)
 }
 
-func makeReqIDField(reqID string) zap.Field {
-	return String(strings.ToLower(ReqIDHeader), reqID)
+func MakeReqIDField(reqID string) zap.Field {
+	return String(strings.ToLower(ReqIDField), reqID)
 }
 
-func makeBoxIDField() zap.Field {
-	return Int64(strings.ToLower(BoxIDHeader), _boxID)
+// MakeBoxIDField makes a field key is BoxIDField.
+func MakeBoxIDField() zap.Field {
+	return Int64(strings.ToLower(BoxIDField), _boxID)
 }
 
 func ErrorWithReqID(msg, reqID string) {
 
-	_global.Error(msg, makeReqIDField(reqID), makeBoxIDField())
+	_global.Error(msg, MakeReqIDField(reqID), MakeBoxIDField())
 }
 
 func InfoWithReqID(msg, reqID string) {
 
-	_global.Info(msg, makeReqIDField(reqID), makeBoxIDField())
+	_global.Info(msg, MakeReqIDField(reqID), MakeBoxIDField())
 }
 
 func WarnWithReqID(msg, reqID string) {
 
-	_global.Warn(msg, makeReqIDField(reqID), makeBoxIDField())
+	_global.Warn(msg, MakeReqIDField(reqID), MakeBoxIDField())
 }
 
 func DebugWithReqID(msg, reqID string) {
 
-	_global.Debug(msg, makeReqIDField(reqID), makeBoxIDField())
+	_global.Debug(msg, MakeReqIDField(reqID), MakeBoxIDField())
 }
 
 func FatalWithReqID(msg, reqID string) {
 
-	_global.Fatal(msg, makeReqIDField(reqID), makeBoxIDField())
+	_global.Fatal(msg, MakeReqIDField(reqID), MakeBoxIDField())
 }
 
 func PanicWithReqID(msg, reqID string) {
 
-	_global.Panic(msg, makeReqIDField(reqID), makeBoxIDField())
+	_global.Panic(msg, MakeReqIDField(reqID), MakeBoxIDField())
 }
 
 // Sync syncs _global.
