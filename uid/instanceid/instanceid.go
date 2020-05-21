@@ -15,7 +15,8 @@
  */
 
 // Package instanceid provides method to generate unique Instance ID.
-// Any ZBuffer and ZStore instance need an unique Instance ID within a box.
+// Any ZBuffer and ZStore instance need an unique Instance ID within a box,
+// and it MUST not be changed in its lifecycle.
 package instanceid
 
 import (
