@@ -57,7 +57,7 @@ func ReplyError(w http.ResponseWriter, msg string, statusCode int) (written, sta
 	w.WriteHeader(statusCode)
 	written, err := fmt.Fprintln(w, msg)
 	if err != nil {
-		xlog.WarnWithReqID(makeReplyErrMsg(err), w.Header().Get(xlog.ReqIDHeader))
+		xlog.WarnWithReqID(makeReplyErrMsg(err), w.Header().Get(xlog.ReqIDField))
 	}
 	return written, statusCode
 }
@@ -74,7 +74,7 @@ func ReplyJson(w http.ResponseWriter, ret interface{}, statusCode int) (written,
 	w.WriteHeader(statusCode)
 	written, err := w.Write(msg)
 	if err != nil {
-		xlog.WarnWithReqID(makeReplyErrMsg(err), w.Header().Get(xlog.ReqIDHeader))
+		xlog.WarnWithReqID(makeReplyErrMsg(err), w.Header().Get(xlog.ReqIDField))
 	}
 	return written, statusCode
 }
@@ -87,7 +87,7 @@ func ReplyBin(w http.ResponseWriter, ret io.Reader, length int64) (written, stat
 	w.WriteHeader(http.StatusOK)
 	n, err := io.CopyN(w, ret, length)
 	if err != nil {
-		xlog.WarnWithReqID(makeReplyErrMsg(err), w.Header().Get(xlog.ReqIDHeader))
+		xlog.WarnWithReqID(makeReplyErrMsg(err), w.Header().Get(xlog.ReqIDField))
 	}
 	return int(n), http.StatusOK
 }

@@ -136,7 +136,7 @@ func (c *Client) Request(ctx context.Context, method, url, reqID string, body io
 	if reqID == "" {
 		reqID = xlog.NextReqID()
 	}
-	req.Header.Set(xlog.ReqIDHeader, reqID)
+	req.Header.Set(xlog.ReqIDField, reqID)
 	req.Header.Set("User-Agent", UserAgent)
 
 	hc := c.NextClient()
@@ -224,5 +224,5 @@ func (c *Client) Ping(addr, reqID string, timeout time.Duration) (boxID int64, e
 	}
 	defer CloseResp(resp)
 
-	return strconv.ParseInt(resp.Header.Get(xlog.BoxIDHeader), 10, 64)
+	return strconv.ParseInt(resp.Header.Get(xlog.BoxIDField), 10, 64)
 }

@@ -173,13 +173,13 @@ func (s *Server) withLog(next HandlerFunc, name string) httprouter.Handle {
 		// start & err for access log
 		start := time.Now()
 
-		w.Header().Set(xlog.BoxIDHeader, strconv.FormatInt(xlog.GetBoxID(), 10))
+		w.Header().Set(xlog.BoxIDField, strconv.FormatInt(xlog.GetBoxID(), 10))
 
-		reqID := r.Header.Get(xlog.ReqIDHeader)
+		reqID := r.Header.Get(xlog.ReqIDField)
 		if reqID == "" {
 			reqID = xlog.NextReqID()
 		}
-		w.Header().Set(xlog.ReqIDHeader, reqID)
+		w.Header().Set(xlog.ReqIDField, reqID)
 
 		written, status := next(w, r, p)
 
@@ -236,7 +236,7 @@ func (s *Server) addDefaultHandler() {
 func (s *Server) debug(w http.ResponseWriter, r *http.Request,
 	p httprouter.Params) (written, status int) {
 
-	reqID := w.Header().Get(xlog.ReqIDHeader)
+	reqID := w.Header().Get(xlog.ReqIDField)
 
 	cmd := p.ByName("cmd")
 	switch cmd {

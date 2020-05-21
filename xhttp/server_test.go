@@ -136,7 +136,7 @@ func TestServerPing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	boxID, err = strconv.ParseInt(resp.Header.Get(xlog.BoxIDHeader), 10, 64)
+	boxID, err = strconv.ParseInt(resp.Header.Get(xlog.BoxIDField), 10, 64)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,15 +221,15 @@ func TestMustHaveHeader(t *testing.T) {
 	}
 	defer CloseResp(resp)
 
-	if resp.Header.Get(xlog.BoxIDHeader) != strconv.Itoa(int(testBoxID)) {
+	if resp.Header.Get(xlog.BoxIDField) != strconv.Itoa(int(testBoxID)) {
 		t.Fatal("boxID mismatch")
 	}
 
-	if resp.Header.Get(xlog.ReqIDHeader) == "" {
+	if resp.Header.Get(xlog.ReqIDField) == "" {
 		t.Fatal("request ID missing")
 	}
 
-	_, _, err = xlog.ParseReqID(resp.Header.Get(xlog.ReqIDHeader))
+	_, _, err = xlog.ParseReqID(resp.Header.Get(xlog.ReqIDField))
 	if err != nil {
 		t.Fatal("illegal request ID")
 	}
