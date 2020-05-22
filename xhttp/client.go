@@ -19,6 +19,7 @@ package xhttp
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"io"
@@ -58,31 +59,63 @@ const (
 )
 
 var (
-	// defaultTransport is a h2c transport and backward-compatible with HTTP/1.1.
-	defaultTransport = &http2.Transport{
+	// DefaultTransport is a h2c transport and backward-compatible with HTTP/1.1.
+	DefaultTransport = &http2.Transport{
 		DialTLS: func(network, addr string, cfg *tls.Config) (conn net.Conn, e error) {
 			return net.Dial(network, addr)
 		},
-		DisableCompression: true, // For zai, most objects are binary, so compression maybe useless.
+		DisableCompression: true, // For zai, most req/resp body are binary, so compression maybe useless.
 		AllowHTTP:          true,
 	}
 )
 
 // NewDefaultClient creates a Client with default configs.
-func NewDefaultClient() *Client {
+func NewDefaultClient() (*Client, error) {
 
-	return NewClient(0, nil)
+	return NewClient(0, nil), nil
+}
+
+// NewDefaultTLSClient creates a TLS Client with default configs.
+func NewDefaultTLSClient(certFile, keyFile string) (*Client, error) {
+
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, err
+	}
+
+	certBytes, err := ioutil.ReadFile(certFile)
+	if err != nil {
+		return nil, err
+	}
+
+	cp := x509.NewCertPool()
+	if !cp.AppendCertsFromPEM(certBytes) {
+		return nil, errors.New("failed to append certs from PEM")
+	}
+
+	tc := &tls.Config{
+		RootCAs:            cp,
+		Certificates:       []tls.Certificate{cert},
+		InsecureSkipVerify: true,
+	}
+
+	tp := &http2.Transport{
+		TLSClientConfig:    tc,
+		DisableCompression: true,
+	}
+
+	return NewClient(0, tp), nil
 }
 
 // NewClient creates a Client.
 // If clientCnt == 0, use defaultClientCnt.
-// If transport == nil, use defaultTransport.
+// If transport == nil, use DefaultTransport.
 func NewClient(clientCnt int, transport *http2.Transport) *Client {
 
 	config.Adjust(&clientCnt, defaultClientCnt)
 
 	if transport == nil {
-		transport = defaultTransport
+		transport = DefaultTransport
 	}
 
 	cs := make([]*http.Client, clientCnt)

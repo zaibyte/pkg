@@ -74,7 +74,7 @@ func makeTestServer() (err error) {
 	testServer = httptest.NewServer(srv.srv.Handler)
 	testSrvAddr = testServer.URL
 
-	testClient = NewClient(1, defaultTransport)
+	testClient = NewClient(1, DefaultTransport)
 
 	return nil
 }
