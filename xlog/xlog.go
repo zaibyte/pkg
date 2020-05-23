@@ -16,16 +16,23 @@
 
 // Package xlog provides logger features.
 //
-// All log entries are encoded in JSON, and time format is ISO8601 ("2006-01-02T15:04:05.000Z0700")
+// All log entries are encoded in JSON,
+// and time format is ISO8601 ("2006-01-02T15:04:05.000Z0700")
 package xlog
 
 import (
 	"path/filepath"
+	"strings"
 
 	"github.com/zaibyte/pkg/config/settings"
 
 	"github.com/zaibyte/pkg/config"
 	"go.uber.org/zap"
+)
+
+// TimeFormat is used for parsing log entry's time field.
+const (
+	ISO8601TimeFormat = "2006-01-02T15:04:05.000Z0700"
 )
 
 // RotateConfig is partly copy from logro's Config,
@@ -36,7 +43,7 @@ type RotateConfig struct {
 	MaxSize int64 `toml:"max_size"`
 	// Maximum number of backup log files to retain.
 	MaxBackups int
-	// Timestamp in backup log file. Default is to use UTC time.
+	// Timestamp in backup log file. Default(false) is UTC time.
 	LocalTime bool `toml:"local_time"`
 }
 
@@ -48,7 +55,7 @@ type ServerConfig struct {
 	Rotate          RotateConfig `toml:"rotate"`
 }
 
-// MakeLogger init xlog and returns access logger for application.
+// MakeLogger init global error logger and returns access logger for application.
 func (c *ServerConfig) MakeLogger(appName string, boxID int64) (al *AccessLogger, err error) {
 
 	config.Adjust(&c.ErrorLogOutput, filepath.Join(settings.DefaultLogRoot, appName, "error.log"))
@@ -65,35 +72,39 @@ func (c *ServerConfig) MakeLogger(appName string, boxID int64) (al *AccessLogger
 		return
 	}
 
-	InitGlobalLogger(el)
-	InitBoxID(boxID)
+	InitGlobalLogger(el, boxID)
 
 	return
 }
 
-// TimeFormat is used for parsing log entry's time field.
-const (
-	ISO8601TimeFormat = "2006-01-02T15:04:05.000Z0700"
-)
-
 // Types here for hiding zap, don't need to know zap outside.
 //
-// String warps zap.String
+// String constructs a field with the given key and value.
 func String(key string, value string) zap.Field {
 	return zap.String(key, value)
 }
 
-// Int warps zap.Int
+// Int constructs a field with the given key and value.
 func Int(key string, value int) zap.Field {
 	return zap.Int(key, value)
 }
 
-// Int64 warps zap.Int64
+// Int64 constructs a field with the given key and value.
 func Int64(key string, value int64) zap.Field {
 	return zap.Int64(key, value)
 }
 
-// Float64 warps zap.Float64
+// Float64 constructs a field with the given key and value.
 func Float64(key string, value float64) zap.Field {
 	return zap.Float64(key, value)
+}
+
+// ReqID constructs a field with the Request ID key and value.
+func ReqID(reqID string) zap.Field {
+	return String(strings.ToLower(ReqIDFieldName), reqID)
+}
+
+// BoxID constructs a field with the Box ID key and value.
+func BoxID(boxID int64) zap.Field {
+	return Int64(strings.ToLower(BoxIDFieldName), boxID)
 }

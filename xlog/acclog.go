@@ -40,11 +40,11 @@ func NewAccessLogger(outputPath string, rCfg *RotateConfig) (logger *AccessLogge
 	return &AccessLogger{fl}, nil
 }
 
-// These fields will be added in access log.
+// These field names will be added in access log.
 // And they are HTTP headers in zai too.
 const (
-	ReqIDField = "X-zai-Request-ID"
-	BoxIDField = "X-zai-Box-ID"
+	ReqIDFieldName = "X-zai-Request-ID"
+	BoxIDFieldName = "X-zai-Box-ID"
 )
 
 // AccessLogFields shows access logger output fields.
@@ -115,8 +115,8 @@ func (l *AccessLogger) Write(apiName string, r *http.Request,
 		Int64("body_bytes_recv", r.ContentLength),
 		Int("body_bytes_sent", written),
 		Float64("request_time", round(now.Sub(start).Seconds()*1000, 2)),
-		String(strings.ToLower(ReqIDField), reqID),
-		Int64(strings.ToLower(BoxIDField), _boxID),
+		String(strings.ToLower(ReqIDFieldName), reqID),
+		Int64(strings.ToLower(BoxIDFieldName), _boxID),
 	)
 }
 

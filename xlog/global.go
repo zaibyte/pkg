@@ -16,11 +16,7 @@
 
 package xlog
 
-import (
-	"strings"
-
-	"go.uber.org/zap"
-)
+import "go.uber.org/zap"
 
 var (
 	_global *ErrorLogger
@@ -28,19 +24,9 @@ var (
 )
 
 // Init Global var.
-// I separate logger & boxID here,
-// because for non-keeper components, they won't know the boxID
-// until get boxID from Keeper, so there is a gap.
-
-// InitGlobalLogger init the _global.
 // warn: It's unsafe for concurrent use.
-func InitGlobalLogger(logger *ErrorLogger) {
+func InitGlobalLogger(logger *ErrorLogger, boxID int64) {
 	_global = logger
-}
-
-// InitGlobalLogger init the _global.
-// warn: It's unsafe for concurrent use.
-func InitBoxID(boxID int64) {
 	_boxID = boxID
 }
 
@@ -56,72 +42,51 @@ func Write(p []byte) (n int, err error) {
 }
 
 func Error(msg string, f ...zap.Field) {
-
 	_global.Error(msg, f...)
 }
 
 func Info(msg string, f ...zap.Field) {
-
 	_global.Info(msg, f...)
 }
 
 func Warn(msg string, f ...zap.Field) {
-
 	_global.Warn(msg, f...)
 }
 
 func Debug(msg string, f ...zap.Field) {
-
 	_global.Debug(msg, f...)
 }
 
 func Fatal(msg string, f ...zap.Field) {
-
 	_global.Fatal(msg, f...)
 }
 
 func Panic(msg string, f ...zap.Field) {
-
 	_global.Panic(msg, f...)
 }
 
-func MakeReqIDField(reqID string) zap.Field {
-	return String(strings.ToLower(ReqIDField), reqID)
-}
-
-// MakeBoxIDField makes a field key is BoxIDField.
-func MakeBoxIDField() zap.Field {
-	return Int64(strings.ToLower(BoxIDField), _boxID)
-}
-
 func ErrorWithReqID(msg, reqID string) {
-
-	_global.Error(msg, MakeReqIDField(reqID), MakeBoxIDField())
+	_global.Error(msg, ReqID(reqID), BoxID(_boxID))
 }
 
 func InfoWithReqID(msg, reqID string) {
-
-	_global.Info(msg, MakeReqIDField(reqID), MakeBoxIDField())
+	_global.Info(msg, ReqID(reqID), BoxID(_boxID))
 }
 
 func WarnWithReqID(msg, reqID string) {
-
-	_global.Warn(msg, MakeReqIDField(reqID), MakeBoxIDField())
+	_global.Warn(msg, ReqID(reqID), BoxID(_boxID))
 }
 
 func DebugWithReqID(msg, reqID string) {
-
-	_global.Debug(msg, MakeReqIDField(reqID), MakeBoxIDField())
+	_global.Debug(msg, ReqID(reqID), BoxID(_boxID))
 }
 
 func FatalWithReqID(msg, reqID string) {
-
-	_global.Fatal(msg, MakeReqIDField(reqID), MakeBoxIDField())
+	_global.Fatal(msg, ReqID(reqID), BoxID(_boxID))
 }
 
 func PanicWithReqID(msg, reqID string) {
-
-	_global.Panic(msg, MakeReqIDField(reqID), MakeBoxIDField())
+	_global.Panic(msg, ReqID(reqID), BoxID(_boxID))
 }
 
 // Sync syncs _global.

@@ -99,32 +99,26 @@ func (l *ErrorLogger) Write(p []byte) (n int, err error) {
 }
 
 func (l *ErrorLogger) Error(msg string, f ...zap.Field) {
-
 	l.l.Error(msg, f...)
 }
 
 func (l *ErrorLogger) Info(msg string, f ...zap.Field) {
-
 	l.l.Info(msg, f...)
 }
 
 func (l *ErrorLogger) Warn(msg string, f ...zap.Field) {
-
 	l.l.Warn(msg, f...)
 }
 
 func (l *ErrorLogger) Debug(msg string, f ...zap.Field) {
-
 	l.l.Debug(msg, f...)
 }
 
 func (l *ErrorLogger) Fatal(msg string, f ...zap.Field) {
-
 	l.l.Fatal(msg, f...)
 }
 
 func (l *ErrorLogger) Panic(msg string, f ...zap.Field) {
-
 	l.l.Panic(msg, f...)
 }
 
