@@ -26,6 +26,7 @@ import (
 )
 
 // Get gets Instance ID (according MAC address).
+// Only for showing a way to generate unique instance ID and testing.
 //
 // Warn:
 // It maybe not unique when:
