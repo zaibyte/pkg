@@ -64,10 +64,10 @@ type AccessLogFields struct {
 // |--------------------|--------|---------------------------------|------------------------------|
 // | api                | string | see ps 5                        | zai.get                      |
 // | remote_addr        | string |                                 | 192.168.1.3                  |
-// | status             | int    |  HTTP status code               | 200                          |
-// | body_bytes_sent    | int    |  response body length(written)  | 1                            |
-// | body_bytes_recv    | int64  |  request body length            | 1                            |
-// | request_time       | float64|  see ps 2                       | 1.00                         |
+// | status             | int    | HTTP status code                | 200                          |
+// | body_bytes_sent    | int    | response body length(written)   | 1                            |
+// | body_bytes_recv    | int64  | request body length             | 1                            |
+// | request_time       | float64| see ps 2                        | 1.00                         |
 // | time               | string | log entry written time(ISO8601) | 2018-12-26T01:09:22.852+0800 |
 // | x-zai-request-id   | string |                                 | 100AAOCNvxRDC6AV             |
 // | x-zai-box-id       | int64  |                                 | 1                            |
