@@ -20,14 +20,14 @@ package metricutil
 
 import (
 	"fmt"
+	"strconv"
 	"time"
+
+	"github.com/zaibyte/pkg/typeutil"
+	"github.com/zaibyte/pkg/xlog"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/push"
-	"github.com/zaibyte/pkg/config"
-	"github.com/zaibyte/pkg/typeutil"
-	iid "github.com/zaibyte/pkg/uid/instanceid"
-	"github.com/zaibyte/pkg/xlog"
 )
 
 const zeroDuration = time.Duration(0)
@@ -43,14 +43,20 @@ const (
 )
 
 // Push metrics in background.
-func Push(cfg *Config, instanceID string) {
+func Push(cfg *Config, boxID uint32, instanceID string) {
 
 	if len(cfg.PushAddress) == 0 || cfg.PushJob == "" {
 		xlog.Info("disable Prometheus push client")
 		return
 	}
 
-	config.Adjust(&instanceID, iid.Get())
+	if boxID == 0 {
+		panic("boxID must not be 0")
+	}
+
+	if instanceID == "" {
+		panic("instanceID must not be empty")
+	}
 
 	if cfg.PushInterval.Duration == zeroDuration {
 		cfg.PushInterval.Duration = defaultPushInterval
@@ -58,13 +64,14 @@ func Push(cfg *Config, instanceID string) {
 
 	xlog.Info("start Prometheus push client")
 
-	go prometheusPushClient(cfg, instanceID)
+	go prometheusPushClient(cfg, boxID, instanceID)
 }
 
 // prometheusPushClient pushes metrics to Prometheus Pushgateway.
-func prometheusPushClient(cfg *Config, instanceID string) {
+func prometheusPushClient(cfg *Config, boxID uint32, instanceID string) {
 	pusher := push.New(cfg.PushAddress, cfg.PushJob).
 		Gatherer(prometheus.DefaultGatherer).
+		Grouping("box", strconv.Itoa(int(boxID))).
 		Grouping("instance", instanceID)
 
 	for {
