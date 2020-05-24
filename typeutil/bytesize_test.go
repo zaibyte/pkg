@@ -1,4 +1,4 @@
-// Copyright 2016 PingCAP, Inc.
+// Copyright 2017 PingCAP, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,20 +21,20 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-type durationExample struct {
-	Interval Duration `json:"interval" toml:"interval"`
+type byteSizeExample struct {
+	Size ByteSize `json:"size" toml:"size"`
 }
 
-func TestDuration_JSON(t *testing.T) {
-	ex := &durationExample{}
+func TestByteSize_JSON(t *testing.T) {
+	ex := &byteSizeExample{}
 
-	text := []byte(`{"interval":"1h1m1s"}`)
+	text := []byte(`{"size":"1.498GiB"}`)
 	err := json.Unmarshal(text, ex)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if ex.Interval.Seconds() != float64(60*60+60+1) {
+	if ex.Size != 1608465252 {
 		t.Fatal("unmarshal mismatch")
 	}
 
@@ -44,20 +44,20 @@ func TestDuration_JSON(t *testing.T) {
 	}
 
 	if !bytes.Equal(text, b) {
-		t.Fatal("marshal mismatch")
+		t.Fatal("marshal mismatch", string(b))
 	}
 }
 
-func TestDuration_TOML(t *testing.T) {
-	ex := &durationExample{}
+func TestByteSize_TOML(t *testing.T) {
+	ex := &byteSizeExample{}
 
-	text := []byte(`interval = "1h1m1s"`)
+	text := []byte(`size = "1.498GiB"`)
 	err := toml.Unmarshal(text, ex)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if ex.Interval.Seconds() != float64(60*60+60+1) {
+	if ex.Size != 1608465252 {
 		t.Fatal("unmarshal mismatch")
 	}
 }

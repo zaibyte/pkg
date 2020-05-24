@@ -17,7 +17,6 @@ import (
 	"strconv"
 
 	"github.com/docker/go-units"
-	"github.com/pkg/errors"
 )
 
 // ByteSize is a retype uint64 for TOML and JSON.
@@ -32,11 +31,11 @@ func (b ByteSize) MarshalJSON() ([]byte, error) {
 func (b *ByteSize) UnmarshalJSON(text []byte) error {
 	s, err := strconv.Unquote(string(text))
 	if err != nil {
-		return errors.WithStack(err)
+		return err
 	}
 	v, err := units.RAMInBytes(s)
 	if err != nil {
-		return errors.WithStack(err)
+		return err
 	}
 	*b = ByteSize(v)
 	return nil
@@ -46,7 +45,7 @@ func (b *ByteSize) UnmarshalJSON(text []byte) error {
 func (b *ByteSize) UnmarshalText(text []byte) error {
 	v, err := units.RAMInBytes(string(text))
 	if err != nil {
-		return errors.WithStack(err)
+		return err
 	}
 	*b = ByteSize(v)
 	return nil
