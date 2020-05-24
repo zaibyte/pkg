@@ -39,68 +39,82 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Package xerrors provides rich errors.
-// Copied from github.com/pkg/errors without stack trace.
-// I think it's better to wait Go release error with stack officially,
-// it had been added in Go, but for some reasons reverted.
-// (You can find the reverting deatils in: https://go-review.googlesource.com/c/go/+/176997/
-// & https://github.com/golang/go/issues/29934#issuecomment-489682919)
 package xerrors
 
 import (
-	"fmt"
+	"errors"
 	"io"
+	"testing"
 )
 
-type withMessage struct {
-	cause error
-	msg   string
-}
-
-// WithMessage annotates err with a new message.
-// We can get K&D style error. (http://www.gopl.io/).
-//
-// If err is nil, WithMessage returns nil.
-func WithMessage(err error, msg string) error {
-	if err == nil {
-		return nil
-	}
-	return &withMessage{
-		cause: err,
-		msg:   msg,
+func TestWithMessageNil(t *testing.T) {
+	got := WithMessage(nil, "no error")
+	if got != nil {
+		t.Errorf("WithMessage(nil, \"no error\"): got %#v, expected nil", got)
 	}
 }
 
-// WithMessagef annotates err with the format specifier.
-// If err is nil, WithMessagef returns nil.
-func WithMessagef(err error, format string, args ...interface{}) error {
-	if err == nil {
-		return nil
+func TestWithMessage(t *testing.T) {
+	tests := []struct {
+		err     error
+		message string
+		want    string
+	}{
+		{io.EOF, "read error", "read error: EOF"},
+		{WithMessage(io.EOF, "read error"), "client error", "client error: read error: EOF"},
 	}
-	return &withMessage{
-		cause: err,
-		msg:   fmt.Sprintf(format, args...),
-	}
-}
 
-func (w *withMessage) Error() string { return w.msg + ": " + w.cause.Error() }
-
-// Unwrap return the cause of error, and implement interface {
-//		Unwrap() error
-//	}
-// Provides compatibility for Go 1.13 error chains.
-func (w *withMessage) Unwrap() error { return w.cause }
-
-func (w *withMessage) Format(s fmt.State, verb rune) {
-	switch verb {
-	case 'v':
-		if s.Flag('+') {
-			fmt.Fprintf(s, "%+v\n", w.Unwrap())
-			io.WriteString(s, w.msg)
-			return
+	for _, tt := range tests {
+		got := WithMessage(tt.err, tt.message).Error()
+		if got != tt.want {
+			t.Errorf("WithMessage(%v, %q): got: %q, want %q", tt.err, tt.message, got, tt.want)
 		}
-		fallthrough
-	case 's', 'q':
-		io.WriteString(s, w.Error())
+	}
+}
+
+func TestWithMessagefNil(t *testing.T) {
+	got := WithMessagef(nil, "no error")
+	if got != nil {
+		t.Errorf("WithMessage(nil, \"no error\"): got %#v, expected nil", got)
+	}
+}
+
+func TestWithMessagef(t *testing.T) {
+	tests := []struct {
+		err     error
+		message string
+		want    string
+	}{
+		{io.EOF, "read error", "read error: EOF"},
+		{WithMessagef(io.EOF, "read error without format specifier"), "client error", "client error: read error without format specifier: EOF"},
+		{WithMessagef(io.EOF, "read error with %d format specifier", 1), "client error", "client error: read error with 1 format specifier: EOF"},
+	}
+
+	for _, tt := range tests {
+		got := WithMessagef(tt.err, tt.message).Error()
+		if got != tt.want {
+			t.Errorf("WithMessage(%v, %q): got: %q, want %q", tt.err, tt.message, got, tt.want)
+		}
+	}
+}
+
+func TestWithMessageIs(t *testing.T) {
+
+	target := io.EOF
+
+	tests := []struct {
+		err     error
+		message string
+	}{
+		{target, "read error"},
+		{WithMessagef(target, "read error without format specifier"), "client error"},
+		{WithMessagef(target, "read error with %d format specifier", 1), "client error"},
+	}
+
+	for _, tt := range tests {
+		errWithMsg := WithMessagef(tt.err, tt.message)
+		if !errors.Is(errWithMsg, target) {
+			t.Errorf("WithMessage(%v, %q): is not target", tt.err, tt.message)
+		}
 	}
 }
