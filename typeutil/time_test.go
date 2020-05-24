@@ -14,6 +14,7 @@
 package typeutil
 
 import (
+	"encoding/binary"
 	"math/rand"
 	"time"
 
@@ -27,7 +28,7 @@ type testTimeSuite struct{}
 func (s *testTimeSuite) TestParseTimestap(c *C) {
 	for i := 0; i < 3; i++ {
 		t := time.Now().Add(time.Second * time.Duration(rand.Int31n(1000)))
-		data := Uint64ToBytes(uint64(t.UnixNano()))
+		data := uint64ToBytes(uint64(t.UnixNano()))
 		nt, err := ParseTimestamp(data)
 		c.Assert(err, IsNil)
 		c.Assert(nt.Equal(t), IsTrue)
@@ -46,4 +47,10 @@ func (s *testTimeSuite) TestSubTimeByWallClock(c *C) {
 		duration := SubTimeByWallClock(t2, t1)
 		c.Assert(duration, Equals, time.Second*time.Duration(r))
 	}
+}
+
+func uint64ToBytes(v uint64) []byte {
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, v)
+	return b
 }

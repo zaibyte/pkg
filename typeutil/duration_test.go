@@ -14,36 +14,50 @@
 package typeutil
 
 import (
+	"bytes"
 	"encoding/json"
+	"testing"
 
 	"github.com/BurntSushi/toml"
-	. "github.com/pingcap/check"
 )
-
-var _ = Suite(&testDurationSuite{})
-
-type testDurationSuite struct{}
 
 type example struct {
 	Interval Duration `json:"interval" toml:"interval"`
 }
 
-func (s *testDurationSuite) TestJSON(c *C) {
-	example := &example{}
+func TestDuration_JSON(t *testing.T) {
+	ex := &example{}
 
 	text := []byte(`{"interval":"1h1m1s"}`)
-	c.Assert(json.Unmarshal(text, example), IsNil)
-	c.Assert(example.Interval.Seconds(), Equals, float64(60*60+60+1))
+	err := json.Unmarshal(text, ex)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	b, err := json.Marshal(example)
-	c.Assert(err, IsNil)
-	c.Assert(string(b), Equals, string(text))
+	if ex.Interval.Seconds() != float64(60*60+60+1) {
+		t.Fatal("unmarshal mismatch")
+	}
+
+	b, err := json.Marshal(ex)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(text, b) {
+		t.Fatal("marshal mismatch")
+	}
 }
 
-func (s *testDurationSuite) TestTOML(c *C) {
-	example := &example{}
+func TestDuration_TOML(t *testing.T) {
+	ex := &example{}
 
 	text := []byte(`interval = "1h1m1s"`)
-	c.Assert(toml.Unmarshal(text, example), IsNil)
-	c.Assert(example.Interval.Seconds(), Equals, float64(60*60+60+1))
+	err := toml.Unmarshal(text, ex)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if ex.Interval.Seconds() != float64(60*60+60+1) {
+		t.Fatal("unmarshal mismatch")
+	}
 }

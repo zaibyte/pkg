@@ -13,19 +13,34 @@
 
 package typeutil
 
-import "time"
+import (
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"time"
+)
 
 // ZeroTime is a zero time.
 var ZeroTime = time.Time{}
 
 // ParseTimestamp returns a timestamp for a given byte slice.
 func ParseTimestamp(data []byte) (time.Time, error) {
-	nano, err := BytesToUint64(data)
+	nano, err := bytesToUint64(data)
 	if err != nil {
 		return ZeroTime, err
 	}
 
 	return time.Unix(0, int64(nano)), nil
+}
+
+// bytesToUint64 converts a byte slice to uint64.
+func bytesToUint64(b []byte) (uint64, error) {
+	if len(b) != 8 {
+		return 0, errors.New(
+			fmt.Sprintf("invalid data, must 8 bytes, but %d", len(b)))
+	}
+
+	return binary.BigEndian.Uint64(b), nil
 }
 
 // SubTimeByWallClock returns the duration between two different timestamps.
