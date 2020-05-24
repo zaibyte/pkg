@@ -16,36 +16,41 @@ package typeutil
 import (
 	"encoding/binary"
 	"math/rand"
+	"testing"
 	"time"
-
-	. "github.com/pingcap/check"
 )
 
-var _ = Suite(&testTimeSuite{})
-
-type testTimeSuite struct{}
-
-func (s *testTimeSuite) TestParseTimestap(c *C) {
+func TestParseTimestap(t *testing.T) {
 	for i := 0; i < 3; i++ {
-		t := time.Now().Add(time.Second * time.Duration(rand.Int31n(1000)))
-		data := uint64ToBytes(uint64(t.UnixNano()))
+		t0 := time.Now().Add(time.Second * time.Duration(rand.Int31n(1000)))
+		data := uint64ToBytes(uint64(t0.UnixNano()))
 		nt, err := ParseTimestamp(data)
-		c.Assert(err, IsNil)
-		c.Assert(nt.Equal(t), IsTrue)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !nt.Equal(t0) {
+			t.Fatal("mismatch")
+		}
 	}
-	data := []byte("pd")
+	data := []byte("pkg")
 	nt, err := ParseTimestamp(data)
-	c.Assert(err, NotNil)
-	c.Assert(nt.Equal(ZeroTime), IsTrue)
+	if err == nil {
+		t.Fatal("should failed")
+	}
+	if !nt.Equal(ZeroTime) {
+		t.Fatal("mismatch")
+	}
 }
 
-func (s *testTimeSuite) TestSubTimeByWallClock(c *C) {
+func TestSubTimeByWallClock(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		r := rand.Int31n(1000)
 		t1 := time.Now()
 		t2 := t1.Add(time.Second * time.Duration(r))
 		duration := SubTimeByWallClock(t2, t1)
-		c.Assert(duration, Equals, time.Second*time.Duration(r))
+		if duration != time.Second*time.Duration(r) {
+			t.Fatal("mismatch")
+		}
 	}
 }
 
