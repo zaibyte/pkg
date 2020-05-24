@@ -18,21 +18,24 @@ package xhttp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/zaibyte/pkg/config"
-
-	"github.com/julienschmidt/httprouter"
 	"github.com/zaibyte/pkg/version"
 	"github.com/zaibyte/pkg/xlog"
+
+	"github.com/julienschmidt/httprouter"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 )
@@ -125,6 +128,7 @@ func (s *Server) Run() {
 	s.srv.Handler = s.toH2CHandler()
 
 	go func() {
+		//s.srv.ListenAndServeTLS()
 		if err := s.srv.ListenAndServe(); err != nil {
 			log.Fatal(err)
 		}
@@ -173,13 +177,13 @@ func (s *Server) withLog(next HandlerFunc, name string) httprouter.Handle {
 		// start & err for access log
 		start := time.Now()
 
-		w.Header().Set(xlog.BoxIDField, strconv.FormatInt(xlog.GetBoxID(), 10))
+		w.Header().Set(xlog.BoxIDFieldName, strconv.FormatInt(xlog.GetBoxID(), 10))
 
-		reqID := r.Header.Get(xlog.ReqIDField)
+		reqID := r.Header.Get(xlog.ReqIDFieldName)
 		if reqID == "" {
 			reqID = xlog.NextReqID()
 		}
-		w.Header().Set(xlog.ReqIDField, reqID)
+		w.Header().Set(xlog.ReqIDFieldName, reqID)
 
 		written, status := next(w, r, p)
 
@@ -236,7 +240,7 @@ func (s *Server) addDefaultHandler() {
 func (s *Server) debug(w http.ResponseWriter, r *http.Request,
 	p httprouter.Params) (written, status int) {
 
-	reqID := w.Header().Get(xlog.ReqIDField)
+	reqID := w.Header().Get(xlog.ReqIDFieldName)
 
 	cmd := p.ByName("cmd")
 	switch cmd {
@@ -270,4 +274,82 @@ func (s *Server) version(w http.ResponseWriter, r *http.Request,
 func (s *Server) withDefaultExit() {
 	s.AddExit(s.aLog.Sync)
 	s.AddExit(xlog.Sync)
+}
+
+// Reply replies HTTP request, return the written bytes length & status code,
+// we need the status code for access log.
+//
+// Usage:
+// As return function in http Handler.
+//
+// Warn:
+// Be sure you have called xlog.InitGlobalLogger.
+// If any wrong in the write resp process, it would be written into the log.
+
+// ReplyCode replies to the request with the empty message and HTTP code.
+func ReplyCode(w http.ResponseWriter, statusCode int) (written, status int) {
+
+	return ReplyJson(w, nil, statusCode)
+}
+
+// ReplyError replies to the request with the specified error message and HTTP code.
+func ReplyError(w http.ResponseWriter, msg string, statusCode int) (written, status int) {
+
+	if msg == "" {
+		msg = http.StatusText(statusCode)
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(statusCode)
+	written, err := fmt.Fprintln(w, msg)
+	if err != nil {
+		xlog.ErrorWithReqID(makeReplyErrMsg(err), w.Header().Get(xlog.ReqIDFieldName))
+	}
+	return written, statusCode
+}
+
+// ReplyJson replies to the request with specified ret(in JSON) and HTTP code.
+func ReplyJson(w http.ResponseWriter, ret interface{}, statusCode int) (written, status int) {
+
+	var msg []byte
+	if ret != nil {
+		msg, _ = json.Marshal(ret)
+	}
+	w.Header().Set("Content-Type", "application/json;charset=utf-8")
+	w.Header().Set("Content-Length", strconv.Itoa(len(msg)))
+	w.WriteHeader(statusCode)
+	written, err := w.Write(msg)
+	if err != nil {
+		xlog.ErrorWithReqID(makeReplyErrMsg(err), w.Header().Get(xlog.ReqIDFieldName))
+	}
+	return written, statusCode
+}
+
+// ReplyBin replies to the request with specified ret(in Binary) and length.
+func ReplyBin(w http.ResponseWriter, ret io.Reader, length int64) (written, status int) {
+
+	w.Header().Set("Content-Length", strconv.FormatInt(length, 10))
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.WriteHeader(http.StatusOK)
+	n, err := io.CopyN(w, ret, length)
+	if err != nil {
+		xlog.ErrorWithReqID(makeReplyErrMsg(err), w.Header().Get(xlog.ReqIDFieldName))
+	}
+	return int(n), http.StatusOK
+}
+
+func makeReplyErrMsg(err error) string {
+	return fmt.Sprintf("write resp failed: %s", err.Error())
+}
+
+// FillPath fills the julienschmidt/httprouter style path.
+func FillPath(path string, kv map[string]string) string {
+	if kv == nil {
+		return path
+	}
+
+	for k, v := range kv {
+		path = strings.Replace(path, ":"+k, v, 1)
+	}
+	return path
 }
