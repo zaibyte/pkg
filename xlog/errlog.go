@@ -17,6 +17,8 @@
 package xlog
 
 import (
+	"time"
+
 	"github.com/templexxx/logro"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -72,6 +74,13 @@ func NewErrorLogger(outputPath, level string, rCfg *RotateConfig) (logger *Error
 	}
 
 	core := zapcore.NewCore(zapcore.NewJSONEncoder(defaultEncoderConf()), r, lvl)
+	core = zapcore.NewSamplerWithOptions(
+		core,
+		time.Second,
+		100,
+		100,
+		nil,
+	)
 
 	return &ErrorLogger{
 		l:        zap.New(core),
