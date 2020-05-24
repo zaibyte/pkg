@@ -37,8 +37,6 @@ import (
 	"golang.org/x/net/http2"
 )
 
-const UserAgent = "Go-zai-xhttp"
-
 // Client is xhttp client.
 type Client struct {
 	cs        []*http.Client
@@ -69,14 +67,14 @@ var (
 	}
 )
 
-// NewDefaultClient creates a Client with default configs.
-func NewDefaultClient() (*Client, error) {
+// NewDefaultClientH2C creates a Client with default configs.
+func NewDefaultClientH2C() (*Client, error) {
 
 	return NewClient(0, nil), nil
 }
 
-// NewDefaultTLSClient creates a TLS Client with default configs.
-func NewDefaultTLSClient(certFile, keyFile string) (*Client, error) {
+// NewDefaultClientH2 creates a TLS Client with default configs.
+func NewDefaultClientH2(certFile, keyFile string) (*Client, error) {
 
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
@@ -155,11 +153,13 @@ func addScheme(url string, scheme string) string {
 
 // Do sends an HTTP request and returns an HTTP response.
 //
-// A non-2xx status code DO cause an error.
-// All non-2xx response will be closed.
+// A >= 400 status code DO cause an error.
+// All >= 400 response will be closed.
 //
 // On error, any Response can be ignored.
-func (c *Client) Request(ctx context.Context, method, url, reqID string, body io.Reader) (resp *http.Response, err error) {
+func (c *Client) Request(ctx context.Context,
+	method, url, reqID string, body io.Reader,
+) (resp *http.Response, err error) {
 
 	url = c.addScheme(url)
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
@@ -169,8 +169,7 @@ func (c *Client) Request(ctx context.Context, method, url, reqID string, body io
 	if reqID == "" {
 		reqID = xlog.NextReqID()
 	}
-	req.Header.Set(xlog.ReqIDField, reqID)
-	req.Header.Set("User-Agent", UserAgent)
+	req.Header.Set(xlog.ReqIDFieldName, reqID)
 
 	hc := c.NextClient()
 	resp, err = hc.Do(req)
@@ -178,7 +177,7 @@ func (c *Client) Request(ctx context.Context, method, url, reqID string, body io
 		return
 	}
 
-	if resp.StatusCode/100 != 2 { // See ReplyError for more details.
+	if resp.StatusCode/100 >= 4 {
 
 		err = errors.New(http.StatusText(resp.StatusCode))
 
@@ -187,6 +186,7 @@ func (c *Client) Request(ctx context.Context, method, url, reqID string, body io
 			if err2 != nil {
 				return resp, err2
 			}
+			// See ReplyError for more details.
 			err = errors.New(string(buf[:len(buf)-1])) // drop \n
 		}
 		return
@@ -257,5 +257,5 @@ func (c *Client) Ping(addr, reqID string, timeout time.Duration) (boxID int64, e
 	}
 	defer CloseResp(resp)
 
-	return strconv.ParseInt(resp.Header.Get(xlog.BoxIDField), 10, 64)
+	return strconv.ParseInt(resp.Header.Get(xlog.BoxIDFieldName), 10, 64)
 }
