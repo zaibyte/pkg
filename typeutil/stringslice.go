@@ -16,11 +16,11 @@ package typeutil
 import (
 	"strconv"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
 // StringSlice is more friendly to json encode/decode
+// Separated by ",",
+// and MUST NOT have space between substring.
 type StringSlice []string
 
 // MarshalJSON returns the size as a JSON string.
@@ -32,7 +32,7 @@ func (s StringSlice) MarshalJSON() ([]byte, error) {
 func (s *StringSlice) UnmarshalJSON(text []byte) error {
 	data, err := strconv.Unquote(string(text))
 	if err != nil {
-		return errors.WithStack(err)
+		return err
 	}
 	if len(data) == 0 {
 		*s = []string{}
