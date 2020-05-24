@@ -17,8 +17,6 @@ import (
 	"fmt"
 	"strconv"
 	"time"
-
-	"github.com/pkg/errors"
 )
 
 // Duration is a wrapper of time.Duration for TOML and JSON.
@@ -40,11 +38,11 @@ func (d *Duration) MarshalJSON() ([]byte, error) {
 func (d *Duration) UnmarshalJSON(text []byte) error {
 	s, err := strconv.Unquote(string(text))
 	if err != nil {
-		return errors.WithStack(err)
+		return err
 	}
 	duration, err := time.ParseDuration(s)
 	if err != nil {
-		return errors.WithStack(err)
+		return err
 	}
 	d.Duration = duration
 	return nil
@@ -54,7 +52,7 @@ func (d *Duration) UnmarshalJSON(text []byte) error {
 func (d *Duration) UnmarshalText(text []byte) error {
 	var err error
 	d.Duration, err = time.ParseDuration(string(text))
-	return errors.WithStack(err)
+	return err
 }
 
 // MarshalText returns the duration as a JSON string.
