@@ -22,8 +22,7 @@ import (
 	"syscall"
 )
 
-// IsBroken returns an error is disk error or not,
-// if true, zai will repair the disk.
+// IsBroken returns an error is disk error or not.
 func IsBroken(err error) bool {
 	if err == nil {
 		return false
