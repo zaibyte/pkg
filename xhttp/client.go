@@ -36,17 +36,17 @@ import (
 	"golang.org/x/net/http2"
 )
 
-// Client is xhttp client.
+// Client is an xhttp client.
 type Client struct {
 	cs        []*http.Client
 	id        uint64
 	addScheme func(url string) string
 }
 
-// NextClient uses Round Robin to chose a client.
+// nextClient uses Round Robin to chose a client.
 // For HTTP/2, reuse connections may damage performance if the load is too high,
 // so we may need more clients.
-func (c *Client) NextClient() *http.Client {
+func (c *Client) nextClient() *http.Client {
 	next := atomic.AddUint64(&c.id, 1) % uint64(len(c.cs))
 	return c.cs[next]
 }
@@ -56,8 +56,8 @@ const (
 )
 
 var (
-	// DefaultTransport is a h2c transport and backward-compatible with HTTP/1.1.
-	DefaultTransport = &http2.Transport{
+	// DefaultH2CTransport is a h2c transport and backward-compatible with HTTP/1.1.
+	DefaultH2CTransport = &http2.Transport{
 		DialTLS: func(network, addr string, cfg *tls.Config) (conn net.Conn, e error) {
 			return net.Dial(network, addr)
 		},
@@ -72,8 +72,8 @@ func NewDefaultClientH2C() (*Client, error) {
 	return NewClient(0, nil), nil
 }
 
-// NewDefaultClientH2 creates a TLS Client with default configs.
-func NewDefaultClientH2(certFile, keyFile string) (*Client, error) {
+// NewDefaultClient creates a TLS Client with default configs.
+func NewDefaultClient(certFile, keyFile string) (*Client, error) {
 
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
@@ -106,13 +106,13 @@ func NewDefaultClientH2(certFile, keyFile string) (*Client, error) {
 
 // NewClient creates a Client.
 // If clientCnt == 0, use defaultClientCnt.
-// If transport == nil, use DefaultTransport.
+// If transport == nil, use DefaultH2CTransport.
 func NewClient(clientCnt int, transport *http2.Transport) *Client {
 
 	config.Adjust(&clientCnt, defaultClientCnt)
 
 	if transport == nil {
-		transport = DefaultTransport
+		transport = DefaultH2CTransport
 	}
 
 	cs := make([]*http.Client, clientCnt)
@@ -156,9 +156,7 @@ func addScheme(url string, scheme string) string {
 // All >= 400 response will be closed.
 //
 // On error, any Response can be ignored.
-func (c *Client) Request(ctx context.Context,
-	method, url, reqID string, body io.Reader,
-) (resp *http.Response, err error) {
+func (c *Client) Request(ctx context.Context, method, url, reqID string, body io.Reader) (resp *http.Response, err error) {
 
 	url = c.addScheme(url)
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
@@ -170,7 +168,7 @@ func (c *Client) Request(ctx context.Context,
 	}
 	req.Header.Set(xlog.ReqIDFieldName, reqID)
 
-	hc := c.NextClient()
+	hc := c.nextClient()
 	resp, err = hc.Do(req)
 	if err != nil {
 		return
