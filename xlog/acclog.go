@@ -26,7 +26,7 @@ import (
 	"time"
 )
 
-// AccessLogger is used for recording the server access logs.
+// AccessLogger is used for recording the HTTP server access logs.
 type AccessLogger struct {
 	fl *FreeLogger
 }
@@ -51,6 +51,7 @@ const (
 type AccessLogFields struct {
 	API           string  `json:"api"`
 	RemoteAddr    string  `json:"remote_addr"`
+	Request       string  `json:"request"`
 	Status        int     `json:"status"`
 	BodyBytesSent int     `json:"body_bytes_sent"`
 	BodyBytesRecv int64   `json:"body_bytes_recv"`
@@ -64,6 +65,7 @@ type AccessLogFields struct {
 // |--------------------|--------|---------------------------------|------------------------------|
 // | api                | string | see ps 5                        | zai.get                      |
 // | remote_addr        | string |                                 | 192.168.1.3                  |
+// | request            | string | `<method> <URI> <proto>`        | GET /a HTTP/2.0              |
 // | status             | int    | HTTP status code                | 200                          |
 // | body_bytes_sent    | int    | response body length(written)   | 1                            |
 // | body_bytes_recv    | int64  | request body length             | 1                            |
@@ -111,6 +113,7 @@ func (l *AccessLogger) Write(apiName string, r *http.Request,
 		String("api", apiName),
 		String("remote_addr", remoteAddr),
 		String("time", now.Format(ISO8601TimeFormat)),
+		String("request", strings.Join([]string{r.Method, r.RequestURI, r.Proto}, " ")),
 		Int("status", status),
 		Int64("body_bytes_recv", r.ContentLength),
 		Int("body_bytes_sent", written),
