@@ -55,13 +55,13 @@ type ServerConfig struct {
 	Rotate          RotateConfig `toml:"rotate"`
 }
 
-// MakeLogger init global error logger and returns access logger for application.
-func (c *ServerConfig) MakeLogger(appName string, boxID int64) (al *AccessLogger, err error) {
+// MakeAppLogger init global error logger and returns loggers for application.
+func (c *ServerConfig) MakeAppLogger(appName string, boxID int64) (el *ErrorLogger, al *AccessLogger, err error) {
 
 	config.Adjust(&c.ErrorLogOutput, filepath.Join(settings.DefaultLogRoot, appName, "error.log"))
 	config.Adjust(&c.ErrorLogLevel, "info")
 
-	el, err := NewErrorLogger(c.ErrorLogOutput, c.ErrorLogLevel, &c.Rotate)
+	el, err = NewErrorLogger(c.ErrorLogOutput, c.ErrorLogLevel, &c.Rotate)
 	if err != nil {
 		return
 	}
