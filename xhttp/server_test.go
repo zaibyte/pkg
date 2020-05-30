@@ -27,7 +27,6 @@ import (
 	"strconv"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/zaibyte/pkg/version"
 
@@ -62,7 +61,7 @@ func makeTestServer() (err error) {
 
 	testBoxID = 1
 
-	al, err := lc.MakeLogger("test-xhttp", testBoxID)
+	al, err := lc.MakeAppLogger("test-xhttp", testBoxID)
 	if err != nil {
 		return
 	}
@@ -116,32 +115,6 @@ func TestServerH2cH1(t *testing.T) {
 
 	if resp.ProtoMajor != 1 {
 		t.Fatal("proto should be 1 with HTTP/1.1 client")
-	}
-}
-
-func TestServerPing(t *testing.T) {
-
-	boxID, err := testClient.Ping(testSrvAddr, "", time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if boxID != testBoxID {
-		t.Fatal("boxID mismatch", boxID)
-	}
-
-	c1 := http.DefaultClient // HTTP/1.1 should be ok too.
-
-	resp, err := c1.Head(testSrvAddr + "/v1/ping")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	boxID, err = strconv.ParseInt(resp.Header.Get(xlog.BoxIDField), 10, 64)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if boxID != testBoxID {
-		t.Fatal("boxID mismatch")
 	}
 }
 
@@ -221,16 +194,30 @@ func TestMustHaveHeader(t *testing.T) {
 	}
 	defer CloseResp(resp)
 
-	if resp.Header.Get(xlog.BoxIDField) != strconv.Itoa(int(testBoxID)) {
+	if resp.Header.Get(xlog.BoxIDFieldName) != strconv.Itoa(int(testBoxID)) {
 		t.Fatal("boxID mismatch")
 	}
 
-	if resp.Header.Get(xlog.ReqIDField) == "" {
+	if resp.Header.Get(xlog.ReqIDFieldName) == "" {
 		t.Fatal("request ID missing")
 	}
 
-	_, _, err = xlog.ParseReqID(resp.Header.Get(xlog.ReqIDField))
+	_, _, err = xlog.ParseReqID(resp.Header.Get(xlog.ReqIDFieldName))
 	if err != nil {
 		t.Fatal("illegal request ID")
+	}
+}
+
+func TestFillPath(t *testing.T) {
+	path := "/test/:k0/:k1/:k2"
+	kv := make(map[string]string)
+	kv["k0"] = "v0"
+	kv["k1"] = "v1"
+	kv["k2"] = "v2"
+
+	act := FillPath(path, kv)
+	exp := "/test/v0/v1/v2"
+	if act != exp {
+		t.Fatal("mismatch")
 	}
 }

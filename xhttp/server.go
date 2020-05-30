@@ -255,12 +255,6 @@ func (s *Server) debug(w http.ResponseWriter, r *http.Request,
 	return ReplyCode(w, http.StatusOK)
 }
 
-func (s *Server) ping(w http.ResponseWriter, r *http.Request,
-	p httprouter.Params) (written, status int) {
-
-	return ReplyCode(w, http.StatusOK)
-}
-
 func (s *Server) version(w http.ResponseWriter, r *http.Request,
 	p httprouter.Params) (written, status int) {
 

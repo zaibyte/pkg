@@ -26,7 +26,6 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -235,21 +234,4 @@ func (c *Client) Version(addr, reqID string) (ver version.Info, err error) {
 
 	err = json.NewDecoder(resp.Body).Decode(&ver)
 	return
-}
-
-// Ping checks a server health and returns the server's boxID,
-func (c *Client) Ping(addr, reqID string, timeout time.Duration) (boxID int64, err error) {
-
-	url := addr + "/v1/ping"
-	config.Adjust(&timeout, defaultTimeout)
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	resp, err := c.Request(ctx, http.MethodHead, url, reqID, nil)
-	if err != nil {
-		return
-	}
-	defer resp.Body.Close()
-
-	return strconv.ParseInt(resp.Header.Get(xlog.BoxIDFieldName), 10, 64)
 }
