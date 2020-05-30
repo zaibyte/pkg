@@ -55,7 +55,7 @@ type ServerConfig struct {
 	Rotate          RotateConfig `toml:"rotate"`
 }
 
-// MakeAppLogger init global error logger and returns loggers for application.
+// MakeAppLogger init global error logger and returns loggers for HTTP application.
 func (c *ServerConfig) MakeAppLogger(appName string, boxID int64) (el *ErrorLogger, al *AccessLogger, err error) {
 
 	config.Adjust(&c.ErrorLogOutput, filepath.Join(settings.DefaultLogRoot, appName, "error.log"))
