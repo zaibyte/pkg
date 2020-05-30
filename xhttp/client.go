@@ -194,12 +194,6 @@ func (c *Client) Request(ctx context.Context,
 	return
 }
 
-// CloseResp closes http.Response gracefully.
-func CloseResp(resp *http.Response) {
-	io.Copy(ioutil.Discard, resp.Body)
-	resp.Body.Close()
-}
-
 // --- Default API ---- //
 // --- All HTTP Servers in zai will have these APIs ---- //
 
@@ -221,7 +215,7 @@ func (c *Client) Debug(addr string, on bool, reqID string) (err error) {
 	if err != nil {
 		return
 	}
-	defer CloseResp(resp)
+	defer resp.Body.Close()
 
 	return nil
 }
@@ -237,7 +231,7 @@ func (c *Client) Version(addr, reqID string) (ver version.Info, err error) {
 	if err != nil {
 		return
 	}
-	defer CloseResp(resp)
+	defer resp.Body.Close()
 
 	err = json.NewDecoder(resp.Body).Decode(&ver)
 	return
@@ -255,7 +249,7 @@ func (c *Client) Ping(addr, reqID string, timeout time.Duration) (boxID int64, e
 	if err != nil {
 		return
 	}
-	defer CloseResp(resp)
+	defer resp.Body.Close()
 
 	return strconv.ParseInt(resp.Header.Get(xlog.BoxIDFieldName), 10, 64)
 }
