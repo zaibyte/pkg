@@ -19,11 +19,12 @@ package xlog
 import (
 	"encoding/base64"
 	"encoding/binary"
-	"math"
 	"net/http"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/zaibyte/pkg/xmath"
 )
 
 // AccessLogger is used for recording the HTTP server access logs.
@@ -117,7 +118,7 @@ func (l *AccessLogger) Write(apiName string, r *http.Request,
 		Int("status", status),
 		Int64("body_bytes_recv", r.ContentLength),
 		Int("body_bytes_sent", written),
-		Float64("request_time", round(now.Sub(start).Seconds()*1000, 2)),
+		Float64("request_time", xmath.Round(now.Sub(start).Seconds()*1000, 2)),
 		String(strings.ToLower(ReqIDFieldName), reqID),
 		Int64(strings.ToLower(BoxIDFieldName), _boxID),
 	)
@@ -131,11 +132,6 @@ func (l *AccessLogger) Sync() (err error) {
 // Close closes AccessLogger.
 func (l *AccessLogger) Close() (err error) {
 	return l.fl.Close()
-}
-
-func round(f float64, n int) float64 {
-	pow10n := math.Pow10(n)
-	return math.Trunc(f*pow10n+0.5) / pow10n
 }
 
 // default max_pid = num_processors * 1024,
