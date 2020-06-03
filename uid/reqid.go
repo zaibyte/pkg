@@ -47,10 +47,6 @@ func MakeReqID(boxID uint32) string {
 // warn: maybe not unique but it's acceptable.
 func MakeReqIDWithTime(boxID uint32, t time.Time) string {
 
-	if boxID == 0 {
-		panic("illegal boxID: 0")
-	}
-
 	p := reqPool.Get().([]byte)
 
 	binary.LittleEndian.PutUint32(p[:], boxID)

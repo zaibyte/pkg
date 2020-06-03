@@ -52,10 +52,6 @@ type OID struct {
 // Marshal returns the encoding of v.
 func (o *OID) Marshal() string {
 
-	if o.BoxID == 0 {
-		panic("illegal boxID: 0")
-	}
-
 	now := time.Now().Unix()
 	if now > endUT {
 		panic("zai met its doom")
