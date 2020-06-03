@@ -45,6 +45,7 @@ func New(pattern string) (*xlog.ErrorLogger, *xlog.AccessLogger) {
 	config.Adjust(&pattern, "xlog-test")
 	var err error
 	logDir, err = ioutil.TempDir(os.TempDir(), pattern)
+
 	if err != nil {
 		panic(err)
 	}
@@ -56,7 +57,7 @@ func New(pattern string) (*xlog.ErrorLogger, *xlog.AccessLogger) {
 		Rotate:          xlog.RotateConfig{},
 	}
 
-	el, al, err = svrCfg.MakeAppLogger("", 1)
+	el, al, err = svrCfg.MakeAppLogger("test")
 	if err != nil {
 		panic(err)
 	}
@@ -73,6 +74,5 @@ func Sync() {
 func Clean() {
 	el.Close()
 	al.Close()
-
 	os.RemoveAll(logDir)
 }

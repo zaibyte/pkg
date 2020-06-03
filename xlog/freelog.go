@@ -31,12 +31,14 @@ type FreeLogger struct {
 
 func freeEncoderConf() zapcore.EncoderConfig {
 	return zapcore.EncoderConfig{
+		TimeKey:    "time",
+		EncodeTime: zapcore.ISO8601TimeEncoder,
 		LineEnding: zapcore.DefaultLineEnding,
 	}
 }
 
 // NewFreeLogger return a new FreeLogger.
-func NewFreeLogger(outputPath string, rCfg *RotateConfig) (logger *FreeLogger, err error) {
+func NewFreeLogger(outputPath string, rCfg *RotateConfig, fields []zap.Field) (logger *FreeLogger, err error) {
 
 	syncer, err := logro.New(&logro.Config{
 		OutputPath: outputPath,
@@ -50,12 +52,15 @@ func NewFreeLogger(outputPath string, rCfg *RotateConfig) (logger *FreeLogger, e
 
 	lvl := zap.NewAtomicLevelAt(zap.InfoLevel)
 	core := zapcore.NewCore(zapcore.NewJSONEncoder(freeEncoderConf()), syncer, lvl)
+	if fields != nil {
+		core = core.With(fields)
+	}
 
 	return &FreeLogger{zap.New(core), syncer}, nil
 }
 
-// Write writes fields.
-func (l *FreeLogger) Write(f ...zap.Field) {
+// Info logs in info level.
+func (l *FreeLogger) Info(f ...zap.Field) {
 	l.l.Info("", f...)
 }
 

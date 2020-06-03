@@ -14,17 +14,52 @@
  * limitations under the License.
  */
 
-package xlog
+package xlog_test
 
-import "testing"
+import (
+	"net/http"
+	"testing"
+	"time"
 
-func TestParseReqID(t *testing.T) {
-	reqID := NextReqID()
-	pid, _, err := ParseReqID(reqID)
+	"github.com/zaibyte/pkg/uid"
+
+	"github.com/zaibyte/pkg/xlog/xlogtest"
+)
+
+func BenchmarkAccessLogger_Write(b *testing.B) {
+	_, al := xlogtest.New("xlog-acc")
+	defer func() {
+		xlogtest.Clean()
+	}()
+	req, err := http.NewRequest(http.MethodGet, "http://1.com", nil)
 	if err != nil {
-		t.Fatal(err)
+		b.Fatal(err)
 	}
-	if pid != _pid {
-		t.Fatal("pid mismatch")
+	start := time.Now()
+	reqID := uid.MakeReqIDWithTime(0, start)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		al.Write("-", req, start, reqID, 1, 200)
 	}
+}
+
+func BenchmarkAccessLogger_Write_Parallel(b *testing.B) {
+
+	_, al := xlogtest.New("xlog-acc")
+	defer func() {
+		xlogtest.Clean()
+	}()
+	req, err := http.NewRequest(http.MethodGet, "http://1.com", nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	start := time.Now()
+	reqID := uid.MakeReqIDWithTime(0, start)
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			al.Write("-", req, start, reqID, 1, 200)
+		}
+	})
 }

@@ -22,7 +22,6 @@ package xlog
 
 import (
 	"path/filepath"
-	"strings"
 
 	"github.com/zaibyte/pkg/config/settings"
 
@@ -56,7 +55,7 @@ type ServerConfig struct {
 }
 
 // MakeAppLogger init global error logger and returns loggers for HTTP application.
-func (c *ServerConfig) MakeAppLogger(appName string, boxID int64) (el *ErrorLogger, al *AccessLogger, err error) {
+func (c *ServerConfig) MakeAppLogger(appName string) (el *ErrorLogger, al *AccessLogger, err error) {
 
 	config.Adjust(&c.ErrorLogOutput, filepath.Join(settings.DefaultLogRoot, appName, "error.log"))
 	config.Adjust(&c.ErrorLogLevel, "info")
@@ -66,45 +65,18 @@ func (c *ServerConfig) MakeAppLogger(appName string, boxID int64) (el *ErrorLogg
 		return
 	}
 
+	InitGlobalLogger(el)
+
 	config.Adjust(&c.AccessLogOutput, filepath.Join(settings.DefaultLogRoot, appName, "access.log"))
 	al, err = NewAccessLogger(c.AccessLogOutput, &c.Rotate)
 	if err != nil {
 		return
 	}
 
-	InitGlobalLogger(el, boxID)
-
 	return
-}
-
-// Types here for hiding zap, don't need to know zap outside.
-//
-// String constructs a field with the given key and value.
-func String(key string, value string) zap.Field {
-	return zap.String(key, value)
-}
-
-// Int constructs a field with the given key and value.
-func Int(key string, value int) zap.Field {
-	return zap.Int(key, value)
-}
-
-// Int64 constructs a field with the given key and value.
-func Int64(key string, value int64) zap.Field {
-	return zap.Int64(key, value)
-}
-
-// Float64 constructs a field with the given key and value.
-func Float64(key string, value float64) zap.Field {
-	return zap.Float64(key, value)
 }
 
 // ReqID constructs a field with the Request ID key and value.
 func ReqID(reqID string) zap.Field {
-	return String(strings.ToLower(ReqIDFieldName), reqID)
-}
-
-// BoxID constructs a field with the Box ID key and value.
-func BoxID(boxID int64) zap.Field {
-	return Int64(strings.ToLower(BoxIDFieldName), boxID)
+	return zap.String(ReqIDFieldName, reqID)
 }

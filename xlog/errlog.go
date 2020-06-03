@@ -74,12 +74,11 @@ func NewErrorLogger(outputPath, level string, rCfg *RotateConfig) (logger *Error
 	}
 
 	core := zapcore.NewCore(zapcore.NewJSONEncoder(defaultEncoderConf()), r, lvl)
-	core = zapcore.NewSamplerWithOptions(
+	core = zapcore.NewSampler(
 		core,
 		time.Second,
 		100,
 		100,
-		nil,
 	)
 
 	return &ErrorLogger{

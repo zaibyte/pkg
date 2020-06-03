@@ -20,19 +20,12 @@ import "go.uber.org/zap"
 
 var (
 	_global *ErrorLogger
-	_boxID  int64
 )
 
 // Init Global var.
 // warn: It's unsafe for concurrent use.
-func InitGlobalLogger(logger *ErrorLogger, boxID int64) {
+func InitGlobalLogger(logger *ErrorLogger) {
 	_global = logger
-	_boxID = boxID
-}
-
-// GetBoxID returns global boxID.
-func GetBoxID() int64 {
-	return _boxID
 }
 
 // Write implements io.Writer
@@ -66,27 +59,27 @@ func Panic(msg string, f ...zap.Field) {
 }
 
 func ErrorWithReqID(msg, reqID string) {
-	_global.Error(msg, ReqID(reqID), BoxID(_boxID))
+	_global.Error(msg, ReqID(reqID))
 }
 
 func InfoWithReqID(msg, reqID string) {
-	_global.Info(msg, ReqID(reqID), BoxID(_boxID))
+	_global.Info(msg, ReqID(reqID))
 }
 
 func WarnWithReqID(msg, reqID string) {
-	_global.Warn(msg, ReqID(reqID), BoxID(_boxID))
+	_global.Warn(msg, ReqID(reqID))
 }
 
 func DebugWithReqID(msg, reqID string) {
-	_global.Debug(msg, ReqID(reqID), BoxID(_boxID))
+	_global.Debug(msg, ReqID(reqID))
 }
 
 func FatalWithReqID(msg, reqID string) {
-	_global.Fatal(msg, ReqID(reqID), BoxID(_boxID))
+	_global.Fatal(msg, ReqID(reqID))
 }
 
 func PanicWithReqID(msg, reqID string) {
-	_global.Panic(msg, ReqID(reqID), BoxID(_boxID))
+	_global.Panic(msg, ReqID(reqID))
 }
 
 // Sync syncs _global.
@@ -99,6 +92,7 @@ func Close() error {
 	return _global.Close()
 }
 
+// TODO set level
 // DebugOn enables debug level.
 func DebugOn() {
 	_global.DebugOn()
