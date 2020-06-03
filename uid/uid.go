@@ -2,22 +2,19 @@
  * Copyright (c) 2020. Temple3x (temple3x@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
+ * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
+ * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
+ * See the License for the specific language governing permissions and
  * limitations under the License.
  */
 
-// Package instanceid provides method to generate unique Instance ID.
-// Any ZBuffer and ZStore instance need an unique Instance ID within a box,
-// and it MUST not be changed in its lifecycle.
-package instanceid
+package uid
 
 import (
 	"encoding/hex"
@@ -25,8 +22,21 @@ import (
 	"github.com/google/uuid"
 )
 
-// Get gets Instance ID (according MAC address).
+var _boxID uint32
+
+// InitBoxID sets boxID for all packages under uid.
+func InitBoxID(boxID uint32) {
+	_boxID = boxID
+}
+
+func GetBoxID() uint32 {
+	return _boxID
+}
+
+// MakeInstanceID makes an Instance ID (according MAC address).
 // Only for showing a way to generate unique instance ID and testing.
+// Any ZBuffer and ZStore instance need an unique Instance ID within a box,
+// and it MUST not be changed in its lifecycle.
 //
 // Warn:
 // It maybe not unique when:
@@ -34,6 +44,6 @@ import (
 //   (There are still ways to make it unique, try to make it and things will get easier)
 // 2. After replacing a new net interface, the MAC address won't be as same as before.
 //   (You should offline instance first if hardware need to be replaced.)
-func Get() string {
+func MakeInstanceID() string {
 	return hex.EncodeToString(uuid.NodeID())
 }
