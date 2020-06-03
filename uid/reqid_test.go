@@ -24,10 +24,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func init() {
-	InitBoxID(1)
-}
-
 func TestParseReqID(t *testing.T) {
 
 	times := make([]time.Time, 10)
@@ -37,18 +33,19 @@ func TestParseReqID(t *testing.T) {
 
 	for i, ti := range times {
 		ti := ti
+		expBoxID := uint32(i + 1)
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
 
-			reqID := MakeReqIDWithTime(ti)
+			reqID := MakeReqIDWithTime(expBoxID, ti)
 			boxID, pid, pt, err := ParseReqID(reqID)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			assert.Equal(t, boxID, _boxID)
-			assert.Equal(t, pid, _pid)
-			assert.Equal(t, pt, ti)
+			assert.Equal(t, expBoxID, boxID)
+			assert.Equal(t, _pid, pid)
+			assert.Equal(t, ti, pt)
 		})
 	}
 }
@@ -56,7 +53,7 @@ func TestParseReqID(t *testing.T) {
 func BenchmarkMakeReqID(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
-		_ = MakeReqID()
+		_ = MakeReqID(1)
 	}
 }
 
@@ -64,14 +61,14 @@ func BenchmarkMakeReqID_Parallel(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_ = MakeReqID()
+			_ = MakeReqID(1)
 		}
 	})
 }
 
 func BenchmarkParseReqID(b *testing.B) {
 
-	s := MakeReqID()
+	s := MakeReqID(1)
 
 	for i := 0; i < b.N; i++ {
 		_, _, _, _ = ParseReqID(s)
@@ -80,7 +77,7 @@ func BenchmarkParseReqID(b *testing.B) {
 
 func BenchmarkParseReqID_Parallel(b *testing.B) {
 
-	s := MakeReqID()
+	s := MakeReqID(1)
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {

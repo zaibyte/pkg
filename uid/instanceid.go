@@ -22,17 +22,6 @@ import (
 	"github.com/google/uuid"
 )
 
-var _boxID uint32
-
-// InitBoxID sets boxID for all packages under uid.
-func InitBoxID(boxID uint32) {
-	_boxID = boxID
-}
-
-func GetBoxID() uint32 {
-	return _boxID
-}
-
 // MakeInstanceID makes an Instance ID (according MAC address).
 // Only for showing a way to generate unique instance ID and testing.
 // Any ZBuffer and ZStore instance need an unique Instance ID within a box,

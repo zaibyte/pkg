@@ -53,10 +53,6 @@ type OID struct {
 func (o *OID) Marshal() string {
 
 	if o.BoxID == 0 {
-		o.BoxID = _boxID
-	}
-
-	if o.BoxID == 0 {
 		panic("illegal boxID: 0")
 	}
 

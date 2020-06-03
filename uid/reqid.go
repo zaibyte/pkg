@@ -39,21 +39,21 @@ var reqPool = sync.Pool{
 
 // MakeReqID returns a request ID.
 // warn: maybe not unique but it's acceptable.
-func MakeReqID() string {
-	return MakeReqIDWithTime(time.Now())
+func MakeReqID(boxID uint32) string {
+	return MakeReqIDWithTime(boxID, time.Now())
 }
 
 // MakeReqIDWithTime returns a request ID with specific time.
 // warn: maybe not unique but it's acceptable.
-func MakeReqIDWithTime(t time.Time) string {
+func MakeReqIDWithTime(boxID uint32, t time.Time) string {
 
-	if _boxID == 0 {
+	if boxID == 0 {
 		panic("illegal boxID: 0")
 	}
 
 	p := reqPool.Get().([]byte)
 
-	binary.LittleEndian.PutUint32(p[:], _boxID)
+	binary.LittleEndian.PutUint32(p[:], boxID)
 	binary.LittleEndian.PutUint32(p[4:], _pid)
 	binary.LittleEndian.PutUint64(p[8:], uint64(t.UnixNano()))
 
