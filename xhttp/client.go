@@ -30,6 +30,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/zaibyte/pkg/uid"
+
 	"github.com/zaibyte/pkg/config"
 	"github.com/zaibyte/pkg/version"
 	"github.com/zaibyte/pkg/xlog"
@@ -38,6 +40,8 @@ import (
 
 // Client is an xhttp client.
 type Client struct {
+	boxID uint32
+
 	cs        []*http.Client
 	id        uint64
 	addScheme func(url string) string
@@ -66,48 +70,47 @@ var (
 	}
 )
 
-// NewDefaultClientH2C creates a Client with default configs.
-func NewDefaultClientH2C() (*Client, error) {
+// NewClient creates a TLS Client with default configs.
+func NewClient(boxID uint32, clientCnt int, certFile, keyFile string) (*Client, error) {
 
-	return NewClient(0, nil), nil
+	tp := new(http2.Transport)
+	if certFile == "" || keyFile == "" {
+		tp = DefaultH2CTransport
+	} else {
+		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+		if err != nil {
+			return nil, err
+		}
+
+		certBytes, err := ioutil.ReadFile(certFile)
+		if err != nil {
+			return nil, err
+		}
+
+		cp := x509.NewCertPool()
+		if !cp.AppendCertsFromPEM(certBytes) {
+			return nil, errors.New("failed to append certs from PEM")
+		}
+
+		tc := &tls.Config{
+			RootCAs:            cp,
+			Certificates:       []tls.Certificate{cert},
+			InsecureSkipVerify: true,
+		}
+
+		tp = &http2.Transport{
+			TLSClientConfig:    tc,
+			DisableCompression: true,
+		}
+	}
+
+	return NewClientWithTransport(boxID, clientCnt, tp), nil
 }
 
-// NewDefaultClient creates a TLS Client with default configs.
-func NewDefaultClient(certFile, keyFile string) (*Client, error) {
-
-	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
-	if err != nil {
-		return nil, err
-	}
-
-	certBytes, err := ioutil.ReadFile(certFile)
-	if err != nil {
-		return nil, err
-	}
-
-	cp := x509.NewCertPool()
-	if !cp.AppendCertsFromPEM(certBytes) {
-		return nil, errors.New("failed to append certs from PEM")
-	}
-
-	tc := &tls.Config{
-		RootCAs:            cp,
-		Certificates:       []tls.Certificate{cert},
-		InsecureSkipVerify: true,
-	}
-
-	tp := &http2.Transport{
-		TLSClientConfig:    tc,
-		DisableCompression: true,
-	}
-
-	return NewClient(0, tp), nil
-}
-
-// NewClient creates a Client.
+// NewClientWithTransport creates a Client with a transport.
 // If clientCnt == 0, use defaultClientCnt.
 // If transport == nil, use DefaultH2CTransport.
-func NewClient(clientCnt int, transport *http2.Transport) *Client {
+func NewClientWithTransport(boxID uint32, clientCnt int, transport *http2.Transport) *Client {
 
 	config.Adjust(&clientCnt, defaultClientCnt)
 
@@ -128,6 +131,7 @@ func NewClient(clientCnt int, transport *http2.Transport) *Client {
 	}
 
 	return &Client{
+		boxID:     boxID,
 		cs:        cs,
 		id:        0,
 		addScheme: addScheme,
@@ -164,7 +168,7 @@ func (c *Client) Request(ctx context.Context, method, url, reqID string, body io
 		return
 	}
 	if reqID == "" {
-		reqID = xlog.NextReqID()
+		reqID = uid.MakeReqID()
 	}
 	req.Header.Set(xlog.ReqIDFieldName, reqID)
 
