@@ -92,15 +92,9 @@ func Close() error {
 	return _global.Close()
 }
 
-// TODO set level
-// DebugOn enables debug level.
-func DebugOn() {
-	_global.DebugOn()
-}
+func SetLevel(level string) error {
 
-// DebugOff enables info level.
-func DebugOff() {
-	_global.DebugOff()
+	return _global.SetLevel(level)
 }
 
 // GetLvl returns lvl in string.

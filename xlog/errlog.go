@@ -139,14 +139,15 @@ func (l *ErrorLogger) Close() error {
 	return l.rotation.Close()
 }
 
-// DebugOn enable debug level.
-func (l *ErrorLogger) DebugOn() {
-	l.lvl.SetLevel(zap.DebugLevel)
-}
+func (l *ErrorLogger) SetLevel(level string) error {
+	lvl := zap.NewAtomicLevel()
+	err := lvl.UnmarshalText([]byte(level))
+	if err != nil {
+		return err
+	}
 
-// DebugOff enable info level.
-func (l *ErrorLogger) DebugOff() {
-	l.lvl.SetLevel(zap.InfoLevel)
+	l.lvl.SetLevel(lvl.Level())
+	return nil
 }
 
 // GetLvl return lvl in string.
