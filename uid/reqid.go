@@ -30,7 +30,7 @@ import (
 // Uint16 may not enough, so uint32.
 var _pid = uint32(os.Getpid())
 
-var _enc = base64.URLEncoding
+var _reqEnc = base64.URLEncoding
 
 var makeReqPool = sync.Pool{
 	New: func() interface{} {
@@ -64,7 +64,7 @@ func MakeReqIDWithTime(boxID uint32, t time.Time) string {
 	binary.LittleEndian.PutUint32(b[4:8], _pid)
 	binary.LittleEndian.PutUint64(b[8:16], uint64(t.UnixNano()))
 
-	_enc.Encode(b[16:], b[:16])
+	_reqEnc.Encode(b[16:], b[:16])
 	v := string(b[16:])
 
 	makeReqPool.Put(p)
@@ -80,7 +80,7 @@ func ParseReqID(reqID string) (boxID uint32, pid uint32, t time.Time, err error)
 
 	b := *p
 
-	n, err := _enc.Decode(b[:16], []byte(reqID))
+	n, err := _reqEnc.Decode(b[:16], []byte(reqID))
 	if err != nil {
 		return
 	}

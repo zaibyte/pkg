@@ -32,10 +32,19 @@ const (
 	endUT = 5880040774 // epoch + 136 years.
 )
 
-var oidPool = sync.Pool{
+// oidMPool is OID Marshal pool.
+var oidMPool = sync.Pool{
+	New: func() interface{} {
+		p := make([]byte, 24+32) // 24 for raw bytes slice, 32 for encoded.
+		return &p
+	},
+}
+
+// oidUPool is OID Unmarshal pool.
+var oidUPool = sync.Pool{
 	New: func() interface{} {
 		p := make([]byte, 24)
-		return p
+		return &p
 	},
 }
 
@@ -49,6 +58,8 @@ type OID struct {
 	TS       int64 // TS is a unix time.
 }
 
+var _oEnc = base64.URLEncoding
+
 // Marshal returns the encoding of v.
 func (o *OID) Marshal() string {
 
@@ -58,33 +69,42 @@ func (o *OID) Marshal() string {
 	}
 	delta := uint32(now - epoch)
 
-	p := oidPool.Get().([]byte)
+	p := oidMPool.Get().(*[]byte)
 
-	binary.LittleEndian.PutUint32(p[:4], o.BoxID)
-	binary.LittleEndian.PutUint32(p[4:8], o.ExtentID)
-	binary.LittleEndian.PutUint64(p[8:16], o.Digest)
-	binary.LittleEndian.PutUint32(p[16:20], o.Size)
-	binary.LittleEndian.PutUint32(p[20:24], delta)
+	b := *p
 
-	v := base64.URLEncoding.EncodeToString(p[:])
+	binary.LittleEndian.PutUint32(b[:4], o.BoxID)
+	binary.LittleEndian.PutUint32(b[4:8], o.ExtentID)
+	binary.LittleEndian.PutUint64(b[8:16], o.Digest)
+	binary.LittleEndian.PutUint32(b[16:20], o.Size)
+	binary.LittleEndian.PutUint32(b[20:24], delta)
 
-	oidPool.Put(p)
+	_oEnc.Encode(b[24:], b[:24])
+	v := string(b[24:])
+
+	oidMPool.Put(p)
 
 	return v
 }
 
 // Unmarshal parses the encoded data and stores the result
-func (o *OID) Unmarshal(v string) error {
+func (o *OID) Unmarshal(oid string) error {
 
-	p, err := base64.URLEncoding.DecodeString(v)
+	p := oidUPool.Get().(*[]byte)
+	defer oidUPool.Put(p)
+
+	b := *p
+
+	n, err := _oEnc.Decode(b[:24], []byte(oid))
 	if err != nil {
 		return err
 	}
+	b = b[:n]
 
-	o.BoxID = binary.LittleEndian.Uint32(p[:4])
-	o.ExtentID = binary.LittleEndian.Uint32(p[4:8])
-	o.Digest = binary.LittleEndian.Uint64(p[8:16])
-	o.Size = binary.LittleEndian.Uint32(p[16:20])
-	o.TS = int64(binary.LittleEndian.Uint32(p[20:24]) + epoch)
+	o.BoxID = binary.LittleEndian.Uint32(b[:4])
+	o.ExtentID = binary.LittleEndian.Uint32(b[4:8])
+	o.Digest = binary.LittleEndian.Uint64(b[8:16])
+	o.Size = binary.LittleEndian.Uint32(b[16:20])
+	o.TS = int64(binary.LittleEndian.Uint32(b[20:24]) + epoch)
 	return nil
 }
