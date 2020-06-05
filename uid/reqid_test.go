@@ -32,20 +32,20 @@ func TestParseReqID(t *testing.T) {
 	}
 
 	for i, ti := range times {
-		ti := ti
+		expT := ti
 		expBoxID := uint32(i + 1)
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
 
-			reqID := MakeReqIDWithTime(expBoxID, ti)
-			boxID, pid, pt, err := ParseReqID(reqID)
+			reqID := MakeReqIDWithTime(expBoxID, expT)
+			actBoxID, actPID, actT, err := ParseReqID(reqID)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			assert.Equal(t, expBoxID, boxID)
-			assert.Equal(t, _pid, pid)
-			assert.Equal(t, ti, pt)
+			assert.Equal(t, expBoxID, actBoxID)
+			assert.Equal(t, _pid, actPID)
+			assert.Equal(t, expT, actT)
 		})
 	}
 }

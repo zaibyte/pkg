@@ -30,10 +30,19 @@ import (
 // Uint16 may not enough, so uint32.
 var _pid = uint32(os.Getpid())
 
-var reqPool = sync.Pool{
+var _enc = base64.URLEncoding
+
+var makeReqPool = sync.Pool{
+	New: func() interface{} {
+		p := make([]byte, 16+24) // 16 for raw bytes slice, 24 for encoded.
+		return &p
+	},
+}
+
+var parseReqPool = sync.Pool{
 	New: func() interface{} {
 		p := make([]byte, 16)
-		return p
+		return &p
 	},
 }
 
@@ -47,15 +56,18 @@ func MakeReqID(boxID uint32) string {
 // warn: maybe not unique but it's acceptable.
 func MakeReqIDWithTime(boxID uint32, t time.Time) string {
 
-	p := reqPool.Get().([]byte)
+	p := makeReqPool.Get().(*[]byte)
 
-	binary.LittleEndian.PutUint32(p[:], boxID)
-	binary.LittleEndian.PutUint32(p[4:], _pid)
-	binary.LittleEndian.PutUint64(p[8:], uint64(t.UnixNano()))
+	b := *p
 
-	v := base64.URLEncoding.EncodeToString(p[:])
+	binary.LittleEndian.PutUint32(b[:], boxID)
+	binary.LittleEndian.PutUint32(b[4:8], _pid)
+	binary.LittleEndian.PutUint64(b[8:16], uint64(t.UnixNano()))
 
-	reqPool.Put(p)
+	_enc.Encode(b[16:], b[:16])
+	v := string(b[16:])
+
+	makeReqPool.Put(p)
 
 	return v
 }
@@ -63,13 +75,18 @@ func MakeReqIDWithTime(boxID uint32, t time.Time) string {
 // ParseReqID gets boxID & pid & time from a request ID.
 func ParseReqID(reqID string) (boxID uint32, pid uint32, t time.Time, err error) {
 
-	p, err := base64.URLEncoding.DecodeString(reqID)
+	p := parseReqPool.Get().(*[]byte)
+	defer parseReqPool.Put(p)
+
+	b := *p
+
+	n, err := _enc.Decode(b[:16], []byte(reqID))
 	if err != nil {
 		return
 	}
-
-	boxID = binary.LittleEndian.Uint32(p[:4])
-	pid = binary.LittleEndian.Uint32(p[4:8])
-	t = time.Unix(0, int64(binary.LittleEndian.Uint64(p[8:16])))
+	b = b[:n]
+	boxID = binary.LittleEndian.Uint32(b[:4])
+	pid = binary.LittleEndian.Uint32(b[4:8])
+	t = time.Unix(0, int64(binary.LittleEndian.Uint64(b[8:16])))
 	return
 }
