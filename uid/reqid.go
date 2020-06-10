@@ -14,79 +14,63 @@
  * limitations under the License.
  */
 
-// Package reqid provides functions to generate unique Request ID.
 package uid
 
 import (
-	"encoding/base64"
 	"encoding/binary"
-	"os"
+	"encoding/hex"
+	"math/rand"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
-// default max_pid = num_processors * 1024,
-// or max_pid = 32768 when num_processors < 32.
-// Uint16 may not enough, so uint32.
-var _pid = uint32(os.Getpid())
-
-var _reqEnc = base64.URLEncoding
+var (
+	_randID = rand.New(rand.NewSource(time.Now().UnixNano())).Uint32()
+	hexEnc  = func(dst, src []byte) {
+		hex.Encode(dst, src)
+	}
+)
 
 var makeReqPool = sync.Pool{
 	New: func() interface{} {
-		p := make([]byte, 16+24) // 16 for raw bytes slice, 24 for encoded.
-		return &p
-	},
-}
-
-var parseReqPool = sync.Pool{
-	New: func() interface{} {
-		p := make([]byte, 16)
+		p := make([]byte, 16+32)
 		return &p
 	},
 }
 
 // MakeReqID returns a request ID.
-// warn: maybe not unique but it's acceptable.
+// Request ID is encoded in 128bit hex codes which is as same as Jaeger.
+//
+// Warn:
+// Maybe not unique but it's acceptable.
 func MakeReqID(boxID uint32) string {
-	return MakeReqIDWithTime(boxID, time.Now())
-}
-
-// MakeReqIDWithTime returns a request ID with specific time.
-// warn: maybe not unique but it's acceptable.
-func MakeReqIDWithTime(boxID uint32, t time.Time) string {
 
 	p := makeReqPool.Get().(*[]byte)
-
 	b := *p
 
-	binary.LittleEndian.PutUint32(b[:], boxID)
-	binary.LittleEndian.PutUint32(b[4:8], _pid)
-	binary.LittleEndian.PutUint64(b[8:16], uint64(t.UnixNano()))
+	binary.BigEndian.PutUint32(b[:4], boxID)
+	binary.BigEndian.PutUint32(b[4:8], _randID)
+	binary.BigEndian.PutUint32(b[8:12], atomic.LoadUint32(&ticker.ts))
+	binary.BigEndian.PutUint32(b[12:16], atomic.AddUint32(&ticker.seqID, 1))
 
-	_reqEnc.Encode(b[16:], b[:16])
-	v := string(b[16:])
-
+	hexEnc(b[16:48], b[:16])
+	v := string(b[16:48])
 	makeReqPool.Put(p)
 
 	return v
 }
 
 // ParseReqID gets boxID & pid & time from a request ID.
-func ParseReqID(reqID string) (boxID uint32, pid uint32, t time.Time, err error) {
+func ParseReqID(reqID string) (boxID uint32, t time.Time, err error) {
 
-	p := parseReqPool.Get().(*[]byte)
-	defer parseReqPool.Put(p)
-
-	b := *p
-
-	n, err := _reqEnc.Decode(b[:16], []byte(reqID))
+	b := make([]byte, 16)
+	n, err := hex.Decode(b[:16], []byte(reqID))
 	if err != nil {
 		return
 	}
 	b = b[:n]
-	boxID = binary.LittleEndian.Uint32(b[:4])
-	pid = binary.LittleEndian.Uint32(b[4:8])
-	t = time.Unix(0, int64(binary.LittleEndian.Uint64(b[8:16])))
+	boxID = binary.BigEndian.Uint32(b[:4])
+	t = ToTime(binary.BigEndian.Uint32(b[8:12]))
 	return
 }

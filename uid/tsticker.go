@@ -46,7 +46,7 @@ type tsTicker struct {
 	closed chan bool
 }
 
-func startLogicalTimeTicker() {
+func StartTicker() {
 
 	now := time.Now().Unix()
 	if now > doom {
@@ -76,7 +76,12 @@ func logicalTimeMovLoop() {
 	}
 }
 
-func stopLogicalTimeTicker() {
+func StopTicker() {
 	ticker.ticker.Stop()
 	ticker.closed <- true
+}
+
+func ToTime(ts uint32) time.Time {
+	sec := int64(ts) + epoch
+	return time.Unix(sec, 0)
 }
