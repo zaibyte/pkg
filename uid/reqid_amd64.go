@@ -1,21 +1,19 @@
 /*
- * Copyright (c) 2020. Temple3x (temple3x@gmail.com)
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+* Copyright (c) 2020. Temple3x (temple3x@gmail.com)
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*      http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
  */
-//
-// MIT License
-//
+// hecEncAVX2's algorithm is copied from https://github.com/zbjornson/fast-hex.
 // Copyright (c) 2017 Zach Bjornson
 
 package uid
@@ -36,6 +34,7 @@ func init() {
 var hextable = "0123456789abcdef0123456789abcdef"
 
 // lows is used for generating bytes' low part.
+// Magic from Zach Bjornson's contribution.
 var lows = []int8{-1, 0, -1, 2, -1, 4, -1, 6, -1, 8, -1, 10, -1, 12, -1, 14,
 	-1, 0, -1, 2, -1, 4, -1, 6, -1, 8, -1, 10, -1, 12, -1, 14}
 
