@@ -23,6 +23,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/zaibyte/pkg/xstrconv"
 )
 
 var (
@@ -61,16 +63,16 @@ func MakeReqID(boxID uint32) string {
 	return v
 }
 
-// ParseReqID gets boxID & pid & time from a request ID.
+// ParseReqID gets boxID & time from a request ID.
 func ParseReqID(reqID string) (boxID uint32, t time.Time, err error) {
 
 	b := make([]byte, 16)
-	n, err := hex.Decode(b[:16], []byte(reqID))
+	n, err := hex.Decode(b[:16], xstrconv.ToBytes(reqID))
 	if err != nil {
 		return
 	}
 	b = b[:n]
 	boxID = binary.BigEndian.Uint32(b[:4])
-	t = ToTime(binary.BigEndian.Uint32(b[8:12]))
+	t = Ts2Time(binary.BigEndian.Uint32(b[8:12]))
 	return
 }

@@ -46,6 +46,8 @@ type tsTicker struct {
 	closed chan bool
 }
 
+// StartTicker starts the ticker which running in background.
+// TODO may put it in init.
 func StartTicker() {
 
 	now := time.Now().Unix()
@@ -76,12 +78,14 @@ func logicalTimeMovLoop() {
 	}
 }
 
+// StopTicker releases the resource.
 func StopTicker() {
 	ticker.ticker.Stop()
 	ticker.closed <- true
 }
 
-func ToTime(ts uint32) time.Time {
+// Ts2Time converts zai ts to time.
+func Ts2Time(ts uint32) time.Time {
 	sec := int64(ts) + epoch
 	return time.Unix(sec, 0)
 }

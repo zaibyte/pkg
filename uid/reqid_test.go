@@ -34,7 +34,7 @@ func TestParseReqID(t *testing.T) {
 
 	reqids := new(sync.Map)
 	// Because it's fast, second ts won't change.
-	expTime := ToTime(atomic.LoadUint32(&ticker.ts))
+	expTime := Ts2Time(atomic.LoadUint32(&ticker.ts))
 
 	wg := new(sync.WaitGroup)
 	n := runtime.NumCPU()
