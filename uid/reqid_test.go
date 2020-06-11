@@ -121,10 +121,10 @@ func BenchmarkParseReqID_Parallel(b *testing.B) {
 
 func TestHexEnc(t *testing.T) {
 
-	srcs := make([]byte, 256)
+	srcs := make([]byte, 1024)
 	rand.Read(srcs)
 
-	for i := 0; i < 16; i++ {
+	for i := 0; i < 1024/16; i++ {
 		src := srcs[i*16 : i*16+16]
 		act := make([]byte, 32)
 		hexEnc(act, src)

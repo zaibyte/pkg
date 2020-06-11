@@ -34,6 +34,8 @@ var (
 	}
 )
 
+// Buf will escape to heap because can't inline hexEnc.
+// So make a pool here.
 var makeReqPool = sync.Pool{
 	New: func() interface{} {
 		p := make([]byte, 16+32)
