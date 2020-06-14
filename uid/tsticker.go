@@ -27,7 +27,7 @@ const (
 	// It will reach the end after 136 years from epoch.
 	doom int64 = 5880040774 // epoch + 136 years (about 2^32 seconds).
 	// maxTS is the zai's max timestamp.
-	maxTS uint32 = uint32(doom - epoch)
+	maxTS = uint32(doom - epoch)
 )
 
 var ticker *tsTicker
@@ -46,9 +46,12 @@ type tsTicker struct {
 	closed chan bool
 }
 
-// StartTicker starts the ticker which running in background.
-// TODO may put it in init.
-func StartTicker() {
+func init() {
+	startTicker()
+}
+
+// startTicker starts the ticker which running in background.
+func startTicker() {
 
 	now := time.Now().Unix()
 	if now > doom {

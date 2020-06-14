@@ -18,23 +18,18 @@ package uid
 
 import (
 	"encoding/binary"
-	"encoding/hex"
 	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/templexxx/xhex"
 	"github.com/zaibyte/pkg/xstrconv"
 )
 
-var (
-	_randID = rand.New(rand.NewSource(time.Now().UnixNano())).Uint32()
-	hexEnc  = func(dst, src []byte) {
-		hex.Encode(dst, src)
-	}
-)
+var _randID = rand.New(rand.NewSource(time.Now().UnixNano())).Uint32()
 
-// Buf will escape to heap because can't inline hexEnc.
+// Buf will escape to heap because can't inline hex encoding.
 // So make a pool here.
 var makeReqPool = sync.Pool{
 	New: func() interface{} {
@@ -58,7 +53,7 @@ func MakeReqID(boxID uint32) string {
 	binary.BigEndian.PutUint32(b[8:12], atomic.LoadUint32(&ticker.ts))
 	binary.BigEndian.PutUint32(b[12:16], atomic.AddUint32(&ticker.seqID, 1))
 
-	hexEnc(b[16:48], b[:16])
+	xhex.Encode(b[16:48], b[:16])
 	v := string(b[16:48])
 	makeReqPool.Put(p)
 
@@ -69,11 +64,11 @@ func MakeReqID(boxID uint32) string {
 func ParseReqID(reqID string) (boxID uint32, t time.Time, err error) {
 
 	b := make([]byte, 16)
-	n, err := hex.Decode(b[:16], xstrconv.ToBytes(reqID))
+	err = xhex.Decode(b[:16], xstrconv.ToBytes(reqID))
 	if err != nil {
 		return
 	}
-	b = b[:n]
+	b = b[:16]
 	boxID = binary.BigEndian.Uint32(b[:4])
 	t = Ts2Time(binary.BigEndian.Uint32(b[8:12]))
 	return

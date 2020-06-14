@@ -23,6 +23,6 @@ import (
 func TestTicker(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	StartTicker()
+	startTicker()
 	StopTicker()
 }

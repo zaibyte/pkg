@@ -17,8 +17,6 @@
 package uid
 
 import (
-	"encoding/hex"
-	"math/rand"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -29,7 +27,7 @@ import (
 
 func TestParseReqID(t *testing.T) {
 
-	StartTicker()
+	startTicker()
 	defer StopTicker()
 
 	reqids := new(sync.Map)
@@ -65,7 +63,7 @@ func TestParseReqID(t *testing.T) {
 
 func BenchmarkMakeReqID(b *testing.B) {
 
-	StartTicker()
+	startTicker()
 	defer StopTicker()
 
 	b.ResetTimer()
@@ -77,7 +75,7 @@ func BenchmarkMakeReqID(b *testing.B) {
 
 func BenchmarkMakeReqID_Parallel(b *testing.B) {
 
-	StartTicker()
+	startTicker()
 	defer StopTicker()
 
 	b.ResetTimer()
@@ -91,7 +89,7 @@ func BenchmarkMakeReqID_Parallel(b *testing.B) {
 
 func BenchmarkParseReqID(b *testing.B) {
 
-	StartTicker()
+	startTicker()
 	defer StopTicker()
 
 	b.ResetTimer()
@@ -105,7 +103,7 @@ func BenchmarkParseReqID(b *testing.B) {
 
 func BenchmarkParseReqID_Parallel(b *testing.B) {
 
-	StartTicker()
+	startTicker()
 	defer StopTicker()
 
 	b.ResetTimer()
@@ -117,32 +115,4 @@ func BenchmarkParseReqID_Parallel(b *testing.B) {
 			_, _, _ = ParseReqID(s)
 		}
 	})
-}
-
-func TestHexEnc(t *testing.T) {
-
-	srcs := make([]byte, 1024)
-	rand.Read(srcs)
-
-	for i := 0; i < 1024/16; i++ {
-		src := srcs[i*16 : i*16+16]
-		act := make([]byte, 32)
-		hexEnc(act, src)
-
-		exp := make([]byte, 32)
-		hex.Encode(exp, src)
-
-		assert.Equal(t, exp, act)
-	}
-}
-
-func BenchmarkHexEnc(b *testing.B) {
-	src := make([]byte, 16)
-	dst := make([]byte, 32)
-	rand.Read(src)
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		hexEnc(dst, src)
-	}
 }

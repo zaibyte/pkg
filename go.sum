@@ -95,6 +95,8 @@ github.com/templexxx/go-diodes v0.0.1 h1:1m45VIEtQHji1zJJS5vGs/v4dpYJP89LfG/SidE
 github.com/templexxx/go-diodes v0.0.1/go.mod h1:VhD34WlqKVOnQtaGiYw0CDrgLQFV47ModMvFP5RgAzY=
 github.com/templexxx/logro v0.0.2 h1:TXh7FH8EcynGceOnTcrLBoHFk4ewOl33Gr9eN2BTy1o=
 github.com/templexxx/logro v0.0.2/go.mod h1:42pcc/xCv1ZhFeUOWe9P1mcAlipql0ojOuX2ns7rwFM=
+github.com/templexxx/xhex v0.0.0-20200614015412-aed53437177b h1:XeDLE6c9mzHpdv3Wb1+pWBaWv/BlHK0ZYIu/KaL6eHg=
+github.com/templexxx/xhex v0.0.0-20200614015412-aed53437177b/go.mod h1:7rwmCH0wC2fQvNEvPZ3sKXukhyCTyiaZ5VTZMQYpZKQ=
 github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 go.uber.org/atomic v1.6.0 h1:Ezj3JGmsOnG1MoRWQkPBsKLe9DwWD9QeXzTRzzldNVk=
 go.uber.org/atomic v1.6.0/go.mod h1:sABNBOSYdrvTF6hTgEIbc7YasKWGhgEQZyfxyTvoXHQ=
