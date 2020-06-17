@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2020. Temple3x (temple3x@gmail.com)
+ * Copyright (c) 2015-present Aliaksandr Valialkin, VertaMedia, Kirill Danshin, Erik Dubbelboer, FastHTTP Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.

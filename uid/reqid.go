@@ -83,5 +83,6 @@ func ParseReqID(reqID string) (boxID uint32, t time.Time, err error) {
 	boxID = binary.BigEndian.Uint32(b[:4])
 	t = Ts2Time(binary.BigEndian.Uint32(b[8:12]))
 	reqPPool.Put(p)
+
 	return
 }

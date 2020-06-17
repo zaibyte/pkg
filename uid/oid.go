@@ -88,5 +88,6 @@ func ParseOID(oid string) (boxID, extID uint32, t time.Time, digest uint64, size
 	size = so << 8 >> 8
 	otype = uint8(so >> 24)
 	oidPPool.Put(p)
+
 	return
 }
