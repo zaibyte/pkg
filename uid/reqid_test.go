@@ -49,16 +49,23 @@ func TestParseReqID(t *testing.T) {
 	}
 	wg.Wait()
 
+	wg2 := new(sync.WaitGroup)
+	wg2.Add(n)
 	for i := 0; i < n; i++ {
-		boxID := uint32(i + 1)
-		v, ok := reqids.Load(boxID)
-		assert.True(t, ok)
-		reqID := v.(string)
-		actBoxID, actTime, err := ParseReqID(reqID)
-		assert.Nil(t, err)
-		assert.Equal(t, boxID, actBoxID)
-		assert.Equal(t, expTime, actTime)
+		go func(i int) {
+			defer wg2.Done()
+
+			boxID := uint32(i + 1)
+			v, ok := reqids.Load(boxID)
+			assert.True(t, ok)
+			reqID := v.(string)
+			actBoxID, actTime, err := ParseReqID(reqID)
+			assert.Nil(t, err)
+			assert.Equal(t, boxID, actBoxID)
+			assert.Equal(t, expTime, actTime)
+		}(i)
 	}
+	wg2.Wait()
 }
 
 func BenchmarkMakeReqID(b *testing.B) {

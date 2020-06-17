@@ -16,6 +16,9 @@ package uid
 
 import (
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
 
 	"go.uber.org/goleak"
 )
@@ -25,4 +28,9 @@ func TestTicker(t *testing.T) {
 
 	startTicker()
 	StopTicker()
+}
+
+func TestTs2Time(t *testing.T) {
+	assert.Equal(t, time.Unix(epoch, 0), Ts2Time(0))
+	assert.Equal(t, time.Unix(epoch+1, 0), Ts2Time(1))
 }

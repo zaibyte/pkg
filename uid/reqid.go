@@ -31,7 +31,7 @@ var _randID = rand.New(rand.NewSource(time.Now().UnixNano())).Uint32()
 
 // Buf will escape to heap because can't inline hex encoding.
 // So make a pool here.
-var makeReqPool = sync.Pool{
+var reqMPool = sync.Pool{
 	New: func() interface{} {
 		p := make([]byte, 16+32)
 		return &p
@@ -45,7 +45,7 @@ var makeReqPool = sync.Pool{
 // Maybe not unique but it's acceptable.
 func MakeReqID(boxID uint32) string {
 
-	p := makeReqPool.Get().(*[]byte)
+	p := reqMPool.Get().(*[]byte)
 	b := *p
 
 	binary.BigEndian.PutUint32(b[:4], boxID)
@@ -55,21 +55,33 @@ func MakeReqID(boxID uint32) string {
 
 	xhex.Encode(b[16:48], b[:16])
 	v := string(b[16:48])
-	makeReqPool.Put(p)
+	reqMPool.Put(p)
 
 	return v
+}
+
+// Buf will escape to heap because can't inline hex encoding.
+// So make a pool here.
+var reqPPool = sync.Pool{
+	New: func() interface{} {
+		p := make([]byte, 16)
+		return &p
+	},
 }
 
 // ParseReqID gets boxID & time from a request ID.
 func ParseReqID(reqID string) (boxID uint32, t time.Time, err error) {
 
-	b := make([]byte, 16)
+	p := reqPPool.Get().(*[]byte)
+	b := *p
+
 	err = xhex.Decode(b[:16], xstrconv.ToBytes(reqID))
 	if err != nil {
+		reqPPool.Put(p)
 		return
 	}
-	b = b[:16]
 	boxID = binary.BigEndian.Uint32(b[:4])
 	t = Ts2Time(binary.BigEndian.Uint32(b[8:12]))
+	reqPPool.Put(p)
 	return
 }

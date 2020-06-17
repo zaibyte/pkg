@@ -17,94 +17,76 @@
 package uid
 
 import (
-	"encoding/base64"
 	"encoding/binary"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/templexxx/xhex"
+
+	"github.com/zaibyte/pkg/xstrconv"
 )
 
 const (
-	// epoch is an Unix time.
-	// 2020-06-03T08:39:34.000+0800.
-	epoch = 1591144774
-	// endUT is the max Unix time.
-	// It will reach the end after 136 years from epoch.
-	endUT = 5880040774 // epoch + 136 years.
+	NormalObj uint8 = 1 // Normal Object, maximum size is 4MB.
+	LinkObj   uint8 = 2 // Link Object, maximum size 4MB.
 )
 
-// oidMPool is OID Marshal pool.
 var oidMPool = sync.Pool{
 	New: func() interface{} {
-		p := make([]byte, 24+32) // 24 for raw bytes slice, 32 for encoded.
+		p := make([]byte, 24+48, 24+48) // 24 for raw bytes slice, 48 for hex.
 		return &p
 	},
 }
 
-// oidUPool is OID Unmarshal pool.
-var oidUPool = sync.Pool{
-	New: func() interface{} {
-		p := make([]byte, 24)
-		return &p
-	},
-}
-
-// OID is the unique Object ID.
-// It's Globally unique (across boxes).
-type OID struct {
-	BoxID    uint32
-	ExtentID uint32
-	Digest   uint64
-	Size     uint32
-	TS       int64 // TS is a unix time.
-}
-
-var _oEnc = base64.URLEncoding
-
-// Marshal returns the encoding of v.
-func (o *OID) Marshal() string {
-
-	now := time.Now().Unix()
-	if now > endUT {
-		panic("zai met its doom")
-	}
-	delta := uint32(now - epoch)
+// MakeOID makes oid.
+func MakeOID(boxID, extID uint32, digest uint64, size uint32, otype uint8) string {
 
 	p := oidMPool.Get().(*[]byte)
-
 	b := *p
 
-	binary.LittleEndian.PutUint32(b[:4], o.BoxID)
-	binary.LittleEndian.PutUint32(b[4:8], o.ExtentID)
-	binary.LittleEndian.PutUint64(b[8:16], o.Digest)
-	binary.LittleEndian.PutUint32(b[16:20], o.Size)
-	binary.LittleEndian.PutUint32(b[20:24], delta)
+	binary.BigEndian.PutUint32(b[:4], boxID)
+	binary.BigEndian.PutUint32(b[4:8], extID)
 
-	_oEnc.Encode(b[24:], b[:24])
-	v := string(b[24:])
+	binary.BigEndian.PutUint32(b[8:12], atomic.LoadUint32(&ticker.ts))
+	binary.BigEndian.PutUint64(b[12:20], digest)
 
+	so := uint32(otype)<<24 | size // The maximum size of an object is 4MB (2^22 < 2 ^24).
+	binary.BigEndian.PutUint32(b[20:24], so)
+
+	xhex.Encode(b[24:24+48], b[:24])
+	v := string(b[24 : 24+48])
 	oidMPool.Put(p)
 
 	return v
 }
 
-// Unmarshal parses the encoded data and stores the result
-func (o *OID) Unmarshal(oid string) error {
+var oidPPool = sync.Pool{
+	New: func() interface{} {
+		p := make([]byte, 24, 24)
+		return &p
+	},
+}
 
-	p := oidUPool.Get().(*[]byte)
-	defer oidUPool.Put(p)
+// ParseOID parses oid.
+func ParseOID(oid string) (boxID, extID uint32, t time.Time, digest uint64, size uint32, otype uint8, err error) {
 
+	p := oidPPool.Get().(*[]byte)
 	b := *p
 
-	n, err := _oEnc.Decode(b[:24], []byte(oid))
+	err = xhex.Decode(b[:24], xstrconv.ToBytes(oid))
 	if err != nil {
-		return err
+		oidPPool.Put(p)
+		return
 	}
-	b = b[:n]
+	boxID = binary.BigEndian.Uint32(b[:4])
+	extID = binary.BigEndian.Uint32(b[4:8])
+	t = Ts2Time(binary.BigEndian.Uint32(b[8:12]))
+	digest = binary.BigEndian.Uint64(b[12:20])
 
-	o.BoxID = binary.LittleEndian.Uint32(b[:4])
-	o.ExtentID = binary.LittleEndian.Uint32(b[4:8])
-	o.Digest = binary.LittleEndian.Uint64(b[8:16])
-	o.Size = binary.LittleEndian.Uint32(b[16:20])
-	o.TS = int64(binary.LittleEndian.Uint32(b[20:24]) + epoch)
-	return nil
+	so := binary.BigEndian.Uint32(b[20:24])
+	size = so << 8 >> 8
+	otype = uint8(so >> 24)
+	oidPPool.Put(p)
+	return
 }

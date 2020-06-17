@@ -17,7 +17,9 @@
 package uid
 
 import (
-	"strconv"
+	"runtime"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -25,95 +27,77 @@ import (
 
 func TestOID(t *testing.T) {
 
-	oids := make([]*OID, 10)
-	for i := range oids {
-		oids[i] = &OID{
-			BoxID:    uint32(i + 1),
-			ExtentID: uint32(i + 2),
-			Digest:   uint64(i + 3),
-			Size:     uint32(i + 4),
-		}
+	oidStrs := new(sync.Map)
+
+	// Because it's fast, second ts won't change.
+	expTime := Ts2Time(atomic.LoadUint32(&ticker.ts))
+
+	wg := new(sync.WaitGroup)
+	n := runtime.NumCPU()
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(seed int) {
+			defer wg.Done()
+
+			boxID := uint32(seed + 1)
+			extID := uint32(seed + 2)
+			digest := uint64(seed + 3)
+			size := uint32(seed + 4)
+			otype := uint8(seed & 7)
+
+			oid := MakeOID(boxID, extID, digest, size, otype)
+			oidStrs.Store(seed, oid)
+
+		}(i)
 	}
+	wg.Wait()
 
-	for i, o := range oids {
-		o := o
-		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			t.Parallel()
-			v := o.Marshal()
-			err := o.Unmarshal(v)
-			if err != nil {
-				t.Fatal(err)
-			}
+	wg2 := new(sync.WaitGroup)
+	wg2.Add(n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			defer wg2.Done()
 
-			o2 := new(OID)
-			err = o2.Unmarshal(v)
-			if err != nil {
-				t.Fatal(err)
-			}
+			v, ok := oidStrs.Load(i)
+			assert.True(t, ok)
 
-			assert.Equal(t, o, o2)
-		})
+			oid := v.(string)
+			boxID, extID, ts, digest, size, otype, err := ParseOID(oid)
+			assert.Nil(t, err)
+
+			expboxID := uint32(i + 1)
+			expextID := uint32(i + 2)
+			expdigest := uint64(i + 3)
+			expsize := uint32(i + 4)
+			expotype := uint8(i & 7)
+
+			assert.Equal(t, expboxID, boxID)
+			assert.Equal(t, expextID, extID)
+			assert.Equal(t, expTime, ts)
+			assert.Equal(t, expdigest, digest)
+			assert.Equal(t, expsize, size)
+			assert.Equal(t, expotype, otype)
+		}(i)
 	}
+	wg2.Wait()
 }
 
-func BenchmarkOID_Marshal(b *testing.B) {
-
-	oid := &OID{
-		BoxID:    1,
-		ExtentID: 1,
-		Digest:   1,
-		Size:     1,
-	}
-
-	for i := 0; i < b.N; i++ {
-		_ = oid.Marshal()
-	}
-}
-
-func BenchmarkOID_Marshal_Parallel(b *testing.B) {
-
-	oid := &OID{
-		BoxID:    1,
-		ExtentID: 1,
-		Digest:   1,
-		Size:     1,
-	}
+func BenchmarkMakeOID_Parallel(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_ = oid.Marshal()
+			_ = MakeOID(1, 1, 1, 1, 1)
 		}
 	})
 }
 
-func BenchmarkOID_Unmarshal(b *testing.B) {
+func BenchmarkParseOID_Parallel(b *testing.B) {
 
-	oid := &OID{
-		BoxID:    1,
-		ExtentID: 1,
-		Digest:   1,
-		Size:     1,
-	}
-	s := oid.Marshal()
-
-	for i := 0; i < b.N; i++ {
-		_ = oid.Unmarshal(s)
-	}
-}
-
-func BenchmarkOID_Unmarshal_Parallel(b *testing.B) {
-
-	oid := &OID{
-		BoxID:    1,
-		ExtentID: 1,
-		Digest:   1,
-		Size:     1,
-	}
-	s := oid.Marshal()
+	oid := MakeOID(1, 2, 3, 4, 1)
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_ = oid.Unmarshal(s)
+			ParseOID(oid)
 		}
 	})
 }
