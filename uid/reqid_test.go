@@ -19,20 +19,19 @@ package uid
 import (
 	"runtime"
 	"sync"
-	"sync/atomic"
 	"testing"
+	"time"
+
+	"github.com/templexxx/tsc"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestParseReqID(t *testing.T) {
 
-	startTicker()
-	defer StopTicker()
-
 	reqids := new(sync.Map)
 	// Because it's fast, second ts won't change.
-	expTime := Ts2Time(atomic.LoadUint32(&ticker.ts))
+	expTime := time.Unix(0, tsc.UnixNano())
 
 	wg := new(sync.WaitGroup)
 	n := runtime.NumCPU()
@@ -59,10 +58,11 @@ func TestParseReqID(t *testing.T) {
 			v, ok := reqids.Load(boxID)
 			assert.True(t, ok)
 			reqID := v.(string)
-			actBoxID, actTime, err := ParseReqID(reqID)
+			actBoxID, actInstanceID, actTime, err := ParseReqID(reqID)
 			assert.Nil(t, err)
 			assert.Equal(t, boxID, actBoxID)
-			assert.Equal(t, expTime, actTime)
+			assert.Equal(t, MakeInstanceID(), actInstanceID)
+			assert.Equal(t, expTime.Unix(), actTime.Unix())
 		}(i)
 	}
 	wg2.Wait()
@@ -70,22 +70,12 @@ func TestParseReqID(t *testing.T) {
 
 func BenchmarkMakeReqID(b *testing.B) {
 
-	startTicker()
-	defer StopTicker()
-
-	b.ResetTimer()
-
 	for i := 0; i < b.N; i++ {
 		_ = MakeReqID(1)
 	}
 }
 
 func BenchmarkMakeReqID_Parallel(b *testing.B) {
-
-	startTicker()
-	defer StopTicker()
-
-	b.ResetTimer()
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
@@ -96,30 +86,20 @@ func BenchmarkMakeReqID_Parallel(b *testing.B) {
 
 func BenchmarkParseReqID(b *testing.B) {
 
-	startTicker()
-	defer StopTicker()
-
-	b.ResetTimer()
-
 	s := MakeReqID(1)
 
 	for i := 0; i < b.N; i++ {
-		_, _, _ = ParseReqID(s)
+		_, _, _, _ = ParseReqID(s)
 	}
 }
 
 func BenchmarkParseReqID_Parallel(b *testing.B) {
 
-	startTicker()
-	defer StopTicker()
-
-	b.ResetTimer()
-
 	s := MakeReqID(1)
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_, _, _ = ParseReqID(s)
+			_, _, _, _ = ParseReqID(s)
 		}
 	})
 }

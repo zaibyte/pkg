@@ -26,11 +26,11 @@ import (
 func TestTicker(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	startTicker()
+	StartTicker()
 	StopTicker()
 }
 
 func TestTs2Time(t *testing.T) {
-	assert.Equal(t, time.Unix(epoch, 0), Ts2Time(0))
-	assert.Equal(t, time.Unix(epoch+1, 0), Ts2Time(1))
+	assert.Equal(t, time.Unix(epoch, 0), TsToTime(0))
+	assert.Equal(t, time.Unix(epoch+1, 0), TsToTime(1))
 }

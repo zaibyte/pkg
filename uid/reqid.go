@@ -18,16 +18,43 @@ package uid
 
 import (
 	"encoding/binary"
-	"math/rand"
+	"encoding/hex"
 	"sync"
-	"sync/atomic"
 	"time"
 
+	"github.com/templexxx/tsc"
 	"github.com/templexxx/xhex"
+
 	"github.com/zaibyte/pkg/xstrconv"
 )
 
-var _randID = rand.New(rand.NewSource(time.Now().UnixNano())).Uint32()
+// reqid struct:
+// +-----------+------------+-----------------+---------------+
+// | boxID(10) | padding(6) |  instanceID(48) | timestamp(64) |
+// +-----------+------------+-----------------+---------------+
+//
+// Total length: 16B.
+//
+// boxID: 10bit
+// padding: 6bit
+// instanceID: 48bit
+// timestamp: 64bit
+//
+// Because timestamp's precision is nanosecond,
+// and getting timestamp has cost too,
+// so it's impossible to find two same reqid
+// even multi apps run on the same machine(has same instanceID).
+
+var _instanceID = instanceIdToUint64()
+
+const instanceIDMask = (1 << 48) - 1
+
+func instanceIdToUint64() uint64 {
+	b := makeInstanceIDBytes()
+	p := make([]byte, 8)
+	copy(p[:6], b)
+	return binary.LittleEndian.Uint64(p)
+}
 
 // Buf will escape to heap because can't inline hex encoding.
 // So make a pool here.
@@ -38,7 +65,7 @@ var reqMPool = sync.Pool{
 	},
 }
 
-// MakeReqID returns a request ID.
+// MakeReqID makes a request ID.
 // Request ID is encoded in 128bit hex codes which is as same as Jaeger.
 //
 // Warn:
@@ -48,13 +75,11 @@ func MakeReqID(boxID uint32) string {
 	p := reqMPool.Get().(*[]byte)
 	b := *p
 
-	binary.BigEndian.PutUint32(b[:4], boxID)
-	binary.BigEndian.PutUint32(b[4:8], _randID)
-	binary.BigEndian.PutUint32(b[8:12], atomic.LoadUint32(&ticker.ts))
-	binary.BigEndian.PutUint32(b[12:16], atomic.AddUint32(&ticker.seqID, 1))
+	binary.LittleEndian.PutUint64(b[:8], uint64(boxID)<<54|_instanceID)
+	binary.LittleEndian.PutUint64(b[8:16], uint64(tsc.UnixNano()))
 
-	xhex.Encode(b[16:48], b[:16])
-	v := string(b[16:48])
+	xhex.Encode(b[16:16+32], b[:16])
+	v := string(b[16 : 16+32])
 	reqMPool.Put(p)
 
 	return v
@@ -69,8 +94,8 @@ var reqPPool = sync.Pool{
 	},
 }
 
-// ParseReqID gets boxID & time from a request ID.
-func ParseReqID(reqID string) (boxID uint32, t time.Time, err error) {
+// ParseReqID parses reqID.
+func ParseReqID(reqID string) (boxID uint32, instanceID string, t time.Time, err error) {
 
 	p := reqPPool.Get().(*[]byte)
 	b := *p
@@ -80,8 +105,10 @@ func ParseReqID(reqID string) (boxID uint32, t time.Time, err error) {
 		reqPPool.Put(p)
 		return
 	}
-	boxID = binary.BigEndian.Uint32(b[:4])
-	t = Ts2Time(binary.BigEndian.Uint32(b[8:12]))
+	bi := binary.LittleEndian.Uint64(b[:8])
+	boxID = uint32(bi >> 54)
+	instanceID = hex.EncodeToString(b[0:6])
+	t = time.Unix(0, int64(binary.LittleEndian.Uint64(b[8:16])))
 	reqPPool.Put(p)
 
 	return

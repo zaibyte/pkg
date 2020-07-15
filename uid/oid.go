@@ -20,42 +20,55 @@ import (
 	"encoding/binary"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/templexxx/xhex"
 
 	"github.com/zaibyte/pkg/xstrconv"
 )
 
+// oid struct:
+// +-----------+-------------+---------+------------+----------+----------+
+// | boxID(10) | groupID(22) |  ts(32) | digest(32) | size(24) | otype(8) |
+// +-----------+-------------+---------+------------+----------+----------+
+//
+// Total length: 16B.
+//
+// boxID: 10bit
+// groupID: 22bit
+// digest: 32bit
+// ts: 32bit
+// size: 24bit
+// otype: 8bit
+
+// Object types.
 const (
-	NormalObj uint8 = 1 // Normal Object, maximum size is 4MB.
-	LinkObj   uint8 = 2 // Link Object, maximum size 4MB.
+	NormalObj uint8 = 1 // Normal Object, maximum size is 8MB.
+	LinkObj   uint8 = 2 // Link Object, it links 131072 objects together (at most).
 )
+
+const groupIDMask = (1 << 22) - 1
 
 var oidMPool = sync.Pool{
 	New: func() interface{} {
-		p := make([]byte, 24+48, 24+48) // 24 for raw bytes slice, 48 for hex.
+		p := make([]byte, 16+32, 16+32) // 16 for raw bytes slice, 32 for hex.
 		return &p
 	},
 }
 
 // MakeOID makes oid.
-func MakeOID(boxID, extID uint32, digest uint64, size uint32, otype uint8) string {
+func MakeOID(boxID, groupID, digest, size uint32, otype uint8) string {
 
 	p := oidMPool.Get().(*[]byte)
 	b := *p
 
-	binary.BigEndian.PutUint32(b[:4], boxID)
-	binary.BigEndian.PutUint32(b[4:8], extID)
+	binary.LittleEndian.PutUint32(b[:4], boxID<<22|groupID)
+	binary.LittleEndian.PutUint32(b[4:8], atomic.LoadUint32(&ticker.ts))
 
-	binary.BigEndian.PutUint32(b[8:12], atomic.LoadUint32(&ticker.ts))
-	binary.BigEndian.PutUint64(b[12:20], digest)
+	binary.LittleEndian.PutUint32(b[8:12], digest)
+	binary.LittleEndian.PutUint32(b[12:16], size<<8|uint32(otype))
 
-	so := uint32(otype)<<24 | size // The maximum size of an object is 4MB (2^22 < 2 ^24).
-	binary.BigEndian.PutUint32(b[20:24], so)
-
-	xhex.Encode(b[24:24+48], b[:24])
-	v := string(b[24 : 24+48])
+	xhex.Encode(b[16:16+32], b[:16])
+	v := string(b[16 : 16+32])
 	oidMPool.Put(p)
 
 	return v
@@ -63,30 +76,34 @@ func MakeOID(boxID, extID uint32, digest uint64, size uint32, otype uint8) strin
 
 var oidPPool = sync.Pool{
 	New: func() interface{} {
-		p := make([]byte, 24, 24)
+		p := make([]byte, 16, 16)
 		return &p
 	},
 }
 
 // ParseOID parses oid.
-func ParseOID(oid string) (boxID, extID uint32, t time.Time, digest uint64, size uint32, otype uint8, err error) {
+func ParseOID(oid string) (boxID, groupID, ts, digest, size uint32, otype uint8, err error) {
 
 	p := oidPPool.Get().(*[]byte)
 	b := *p
 
-	err = xhex.Decode(b[:24], xstrconv.ToBytes(oid))
+	err = xhex.Decode(b[:16], xstrconv.ToBytes(oid))
 	if err != nil {
 		oidPPool.Put(p)
 		return
 	}
-	boxID = binary.BigEndian.Uint32(b[:4])
-	extID = binary.BigEndian.Uint32(b[4:8])
-	t = Ts2Time(binary.BigEndian.Uint32(b[8:12]))
-	digest = binary.BigEndian.Uint64(b[12:20])
 
-	so := binary.BigEndian.Uint32(b[20:24])
-	size = so << 8 >> 8
-	otype = uint8(so >> 24)
+	bg := binary.LittleEndian.Uint32(b[:4])
+	boxID = bg >> 22
+	groupID = bg & groupIDMask
+
+	ts = binary.LittleEndian.Uint32(b[4:8])
+
+	digest = binary.LittleEndian.Uint32(b[8:12])
+
+	so := binary.LittleEndian.Uint32(b[12:16])
+	size = so >> 8
+	otype = uint8(so)
 	oidPPool.Put(p)
 
 	return

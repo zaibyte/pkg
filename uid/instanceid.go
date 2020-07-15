@@ -34,5 +34,9 @@ import (
 // 2. After replacing a new net interface, the MAC address won't be as same as before.
 //   (You should offline instance first if hardware need to be replaced.)
 func MakeInstanceID() string {
-	return hex.EncodeToString(uuid.NodeID())
+	return hex.EncodeToString(makeInstanceIDBytes())
+}
+
+func makeInstanceIDBytes() []byte {
+	return uuid.NodeID()
 }

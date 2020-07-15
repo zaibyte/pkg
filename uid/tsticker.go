@@ -17,6 +17,8 @@ package uid
 import (
 	"sync/atomic"
 	"time"
+
+	"github.com/templexxx/cpu"
 )
 
 const (
@@ -33,25 +35,17 @@ const (
 var ticker *tsTicker
 
 type tsTicker struct {
-	_padding0 [64]byte
+	_padding0 [cpu.X86FalseSharingRange]byte
 	ts        uint32
-	_padding1 [64]byte
-
-	_padding2 [64]byte
-	seqID     uint32
-	_padding3 [64]byte
+	_padding1 [cpu.X86FalseSharingRange]byte
 
 	ticker *time.Ticker
 
 	closed chan bool
 }
 
-func init() {
-	startTicker()
-}
-
-// startTicker starts the ticker which running in background.
-func startTicker() {
+// StartTicker starts the ticker which running in background.
+func StartTicker() {
 
 	now := time.Now().Unix()
 	if now > doom {
@@ -87,8 +81,8 @@ func StopTicker() {
 	ticker.closed <- true
 }
 
-// Ts2Time converts zai ts to time.
-func Ts2Time(ts uint32) time.Time {
+// TsToTime converts zai ts to time.
+func TsToTime(ts uint32) time.Time {
 	sec := int64(ts) + epoch
 	return time.Unix(sec, 0)
 }

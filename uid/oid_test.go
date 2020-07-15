@@ -27,10 +27,13 @@ import (
 
 func TestOID(t *testing.T) {
 
+	StartTicker()
+	defer StopTicker()
+
 	oidStrs := new(sync.Map)
 
 	// Because it's fast, second ts won't change.
-	expTime := Ts2Time(atomic.LoadUint32(&ticker.ts))
+	expTime := atomic.LoadUint32(&ticker.ts)
 
 	wg := new(sync.WaitGroup)
 	n := runtime.NumCPU()
@@ -41,7 +44,7 @@ func TestOID(t *testing.T) {
 
 			boxID := uint32(seed + 1)
 			extID := uint32(seed + 2)
-			digest := uint64(seed + 3)
+			digest := uint32(seed + 3)
 			size := uint32(seed + 4)
 			otype := uint8(seed & 7)
 
@@ -67,7 +70,7 @@ func TestOID(t *testing.T) {
 
 			expboxID := uint32(i + 1)
 			expextID := uint32(i + 2)
-			expdigest := uint64(i + 3)
+			expdigest := uint32(i + 3)
 			expsize := uint32(i + 4)
 			expotype := uint8(i & 7)
 
@@ -82,7 +85,24 @@ func TestOID(t *testing.T) {
 	wg2.Wait()
 }
 
+func BenchmarkMakeOID(b *testing.B) {
+
+	StartTicker()
+	defer StopTicker()
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_ = MakeOID(1, 1, 1, 1, 1)
+	}
+}
+
 func BenchmarkMakeOID_Parallel(b *testing.B) {
+
+	StartTicker()
+	defer StopTicker()
+
+	b.ResetTimer()
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
@@ -91,13 +111,32 @@ func BenchmarkMakeOID_Parallel(b *testing.B) {
 	})
 }
 
+func BenchmarkParseOID(b *testing.B) {
+
+	StartTicker()
+	defer StopTicker()
+
+	b.ResetTimer()
+
+	oid := MakeOID(1, 2, 3, 4, 1)
+
+	for i := 0; i < b.N; i++ {
+		_, _, _, _, _, _, _ = ParseOID(oid)
+	}
+}
+
 func BenchmarkParseOID_Parallel(b *testing.B) {
+
+	StartTicker()
+	defer StopTicker()
+
+	b.ResetTimer()
 
 	oid := MakeOID(1, 2, 3, 4, 1)
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			ParseOID(oid)
+			_, _, _, _, _, _, _ = ParseOID(oid)
 		}
 	})
 }
