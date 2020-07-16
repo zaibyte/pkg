@@ -17,66 +17,34 @@
 // Package xlog provides logger features.
 //
 // All log entries are encoded in JSON,
-// and time format is ISO8601 ("2006-01-02T15:04:05.000Z0700")
 package xlog
 
 import (
 	"path/filepath"
 
-	"github.com/zaibyte/pkg/config/settings"
-
 	"github.com/zaibyte/pkg/config"
-	"go.uber.org/zap"
+	"github.com/zaibyte/pkg/config/settings"
 )
 
-// TimeFormat is used for parsing log entry's time field.
-const (
-	ISO8601TimeFormat = "2006-01-02T15:04:05.000Z0700"
-)
-
-// RotateConfig is partly copy from logro's Config,
-// hiding details in logro.
-type RotateConfig struct {
-	// Maximum size of a log file before it gets rotated.
-	// Unit is MB.
-	MaxSize int64 `toml:"max_size"`
-	// Maximum number of backup log files to retain.
-	MaxBackups int
-	// Timestamp in backup log file. Default(false) is UTC time.
-	LocalTime bool `toml:"local_time"`
+// Config is the log configs of a zai application.
+type Config struct {
+	Output string       `toml:"output"`
+	Level  string       `toml:"level"`
+	Rotate RotateConfig `toml:"rotate"`
 }
 
-// ServerConfig is the log configs of a http server application.
-type ServerConfig struct {
-	AccessLogOutput string       `toml:"access_log_output"`
-	ErrorLogOutput  string       `toml:"error_log_output"`
-	ErrorLogLevel   string       `toml:"error_log_level"`
-	Rotate          RotateConfig `toml:"rotate"`
-}
+// MakeLogger init global error logger and returns logger for application.
+func (c *Config) MakeLogger(appName string) (el *ErrorLogger, err error) {
 
-// MakeAppLogger init global error logger and returns loggers for HTTP application.
-func (c *ServerConfig) MakeAppLogger(appName string) (el *ErrorLogger, al *AccessLogger, err error) {
+	config.Adjust(&c.Output, filepath.Join(settings.DefaultLogRoot, appName, "error.log"))
+	config.Adjust(&c.Level, "info")
 
-	config.Adjust(&c.ErrorLogOutput, filepath.Join(settings.DefaultLogRoot, appName, "error.log"))
-	config.Adjust(&c.ErrorLogLevel, "info")
-
-	el, err = NewErrorLogger(c.ErrorLogOutput, c.ErrorLogLevel, &c.Rotate)
+	el, err = NewErrorLogger(c.Output, c.Level, &c.Rotate)
 	if err != nil {
 		return
 	}
 
 	InitGlobalLogger(el)
 
-	config.Adjust(&c.AccessLogOutput, filepath.Join(settings.DefaultLogRoot, appName, "access.log"))
-	al, err = NewAccessLogger(c.AccessLogOutput, &c.Rotate)
-	if err != nil {
-		return
-	}
-
 	return
-}
-
-// ReqID constructs a field with the Request ID key and value.
-func ReqID(reqID string) zap.Field {
-	return zap.String(ReqIDFieldName, reqID)
 }

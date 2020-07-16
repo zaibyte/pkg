@@ -17,21 +17,31 @@
 package xlog
 
 import (
-	"time"
-
-	"github.com/templexxx/logro"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
+	"github.com/zaibyte/nanozap"
+	"github.com/zaibyte/nanozap/zapcore"
+	"github.com/zaibyte/nanozap/zaproll"
 )
+
+// RotateConfig is partly copy from zaproll's Config,
+// hiding details in zaproll.
+type RotateConfig struct {
+	// Maximum size of a log file before it gets rotated.
+	// Unit is MB.
+	MaxSize int64 `toml:"max_size"`
+	// Maximum number of backup log files to retain.
+	MaxBackups int
+	// Timestamp in backup log file. Default(false) is UTC time.
+	LocalTime bool `toml:"local_time"`
+}
 
 // ErrorLogger is used for recording the common application log,
 // xlog also provides global logger for more convenient.
 // In practice, ErrorLogger is just a global logger's container,
 // it won't be used directly.
 type ErrorLogger struct {
-	l        *zap.Logger
-	lvl      zap.AtomicLevel
-	rotation *logro.Rotation
+	l        *nanozap.Logger
+	lvl      nanozap.AtomicLevel
+	rotation *zaproll.Rotation
 }
 
 // ErrLogFields shows error logger output fields.
@@ -57,7 +67,8 @@ type ErrLogFields struct {
 // panic: "panic", "PANIC"
 // fatal: "fatal", "FATAL"
 func NewErrorLogger(outputPath, level string, rCfg *RotateConfig) (logger *ErrorLogger, err error) {
-	r, err := logro.New(&logro.Config{
+
+	r, err := zaproll.New(&zaproll.Config{
 		OutputPath: outputPath,
 		MaxSize:    rCfg.MaxSize,
 		MaxBackups: rCfg.MaxBackups,
@@ -67,22 +78,16 @@ func NewErrorLogger(outputPath, level string, rCfg *RotateConfig) (logger *Error
 		return
 	}
 
-	lvl := zap.NewAtomicLevel()
+	lvl := nanozap.NewAtomicLevel()
 	err = lvl.UnmarshalText([]byte(level))
 	if err != nil {
 		return
 	}
 
 	core := zapcore.NewCore(zapcore.NewJSONEncoder(defaultEncoderConf()), r, lvl)
-	core = zapcore.NewSampler(
-		core,
-		time.Second,
-		100,
-		100,
-	)
 
 	return &ErrorLogger{
-		l:        zap.New(core),
+		l:        nanozap.New(core),
 		rotation: r,
 	}, nil
 }
@@ -90,44 +95,69 @@ func NewErrorLogger(outputPath, level string, rCfg *RotateConfig) (logger *Error
 // default without caller and stack trace,
 func defaultEncoderConf() zapcore.EncoderConfig {
 	return zapcore.EncoderConfig{
-		TimeKey:        "time",
-		LevelKey:       "level",
 		MessageKey:     "msg",
+		LevelKey:       "level",
+		TimeKey:        "time",
+		ReqIDKey:       "reqid",
 		LineEnding:     zapcore.DefaultLineEnding,
 		EncodeLevel:    zapcore.LowercaseLevelEncoder,
-		EncodeTime:     zapcore.ISO8601TimeEncoder,
+		EncodeTime:     zapcore.EpochMillisTimeEncoder,
 		EncodeDuration: zapcore.StringDurationEncoder,
 	}
 }
 
 // Write implements io.Writer
 func (l *ErrorLogger) Write(p []byte) (n int, err error) {
-	l.Error(string(p))
+	l.Error("", string(p))
 	return len(p), nil
 }
 
-func (l *ErrorLogger) Error(msg string, f ...zap.Field) {
-	l.l.Error(msg, f...)
+func (l *ErrorLogger) Error(reqid, msg string) {
+	l.l.Error(reqid, msg)
 }
 
-func (l *ErrorLogger) Info(msg string, f ...zap.Field) {
-	l.l.Info(msg, f...)
+func (l *ErrorLogger) Info(reqid, msg string) {
+	l.l.Info(reqid, msg)
 }
 
-func (l *ErrorLogger) Warn(msg string, f ...zap.Field) {
-	l.l.Warn(msg, f...)
+func (l *ErrorLogger) Warn(reqid, msg string) {
+	l.l.Warn(reqid, msg)
 }
 
-func (l *ErrorLogger) Debug(msg string, f ...zap.Field) {
-	l.l.Debug(msg, f...)
+func (l *ErrorLogger) Debug(reqid, msg string) {
+	l.l.Debug(reqid, msg)
 }
 
-func (l *ErrorLogger) Fatal(msg string, f ...zap.Field) {
-	l.l.Fatal(msg, f...)
+func (l *ErrorLogger) Fatal(reqid, msg string) {
+	l.l.Fatal(reqid, msg)
 }
 
-func (l *ErrorLogger) Panic(msg string, f ...zap.Field) {
-	l.l.Panic(msg, f...)
+func (l *ErrorLogger) Panic(reqid, msg string) {
+	l.l.Panic(reqid, msg)
+}
+
+func (l *ErrorLogger) Errorf(reqid, format string, args ...interface{}) {
+	l.l.Errorf(reqid, format, args)
+}
+
+func (l *ErrorLogger) Infof(reqid, format string, args ...interface{}) {
+	l.l.Infof(reqid, format, args)
+}
+
+func (l *ErrorLogger) Warnf(reqid, format string, args ...interface{}) {
+	l.l.Warnf(reqid, format, args)
+}
+
+func (l *ErrorLogger) Debugf(reqid, format string, args ...interface{}) {
+	l.l.Debugf(reqid, format, args)
+}
+
+func (l *ErrorLogger) Fatalf(reqid, format string, args ...interface{}) {
+	l.l.Fatalf(reqid, format, args)
+}
+
+func (l *ErrorLogger) Panicf(reqid, format string, args ...interface{}) {
+	l.l.Panicf(reqid, format, args)
 }
 
 // Sync syncs ErrorLogger.
@@ -136,11 +166,12 @@ func (l *ErrorLogger) Sync() error {
 }
 
 func (l *ErrorLogger) Close() error {
+	l.l.Close()
 	return l.rotation.Close()
 }
 
 func (l *ErrorLogger) SetLevel(level string) error {
-	lvl := zap.NewAtomicLevel()
+	lvl := nanozap.NewAtomicLevel()
 	err := lvl.UnmarshalText([]byte(level))
 	if err != nil {
 		return err

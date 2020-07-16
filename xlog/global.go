@@ -16,8 +16,6 @@
 
 package xlog
 
-import "go.uber.org/zap"
-
 var (
 	_global *ErrorLogger
 )
@@ -30,56 +28,104 @@ func InitGlobalLogger(logger *ErrorLogger) {
 
 // Write implements io.Writer
 func Write(p []byte) (n int, err error) {
-	_global.Error(string(p))
+	_global.Error("", string(p))
 	return len(p), nil
 }
 
-func Error(msg string, f ...zap.Field) {
-	_global.Error(msg, f...)
+func Error(msg string) {
+	_global.Error("", msg)
 }
 
-func Info(msg string, f ...zap.Field) {
-	_global.Info(msg, f...)
+func Info(msg string) {
+	_global.Info("", msg)
 }
 
-func Warn(msg string, f ...zap.Field) {
-	_global.Warn(msg, f...)
+func Warn(msg string) {
+	_global.Warn("", msg)
 }
 
-func Debug(msg string, f ...zap.Field) {
-	_global.Debug(msg, f...)
+func Debug(msg string) {
+	_global.Debug("", msg)
 }
 
-func Fatal(msg string, f ...zap.Field) {
-	_global.Fatal(msg, f...)
+func Fatal(msg string) {
+	_global.Fatal("", msg)
 }
 
-func Panic(msg string, f ...zap.Field) {
-	_global.Panic(msg, f...)
+func Panic(msg string) {
+	_global.Panic("", msg)
 }
 
-func ErrorWithReqID(msg, reqID string) {
-	_global.Error(msg, ReqID(reqID))
+func Errorf(format string, args ...interface{}) {
+	_global.Errorf("", format, args)
 }
 
-func InfoWithReqID(msg, reqID string) {
-	_global.Info(msg, ReqID(reqID))
+func Infof(format string, args ...interface{}) {
+	_global.Infof("", format, args)
 }
 
-func WarnWithReqID(msg, reqID string) {
-	_global.Warn(msg, ReqID(reqID))
+func Warnf(format string, args ...interface{}) {
+	_global.Warnf("", format, args)
 }
 
-func DebugWithReqID(msg, reqID string) {
-	_global.Debug(msg, ReqID(reqID))
+func Debugf(format string, args ...interface{}) {
+	_global.Debugf("", format, args)
 }
 
-func FatalWithReqID(msg, reqID string) {
-	_global.Fatal(msg, ReqID(reqID))
+func Fatalf(format string, args ...interface{}) {
+	_global.Fatalf("", format, args)
 }
 
-func PanicWithReqID(msg, reqID string) {
-	_global.Panic(msg, ReqID(reqID))
+func Panicf(format string, args ...interface{}) {
+	_global.Panicf("", format, args)
+}
+
+func ErrorID(reqid, msg string) {
+	_global.Error(reqid, msg)
+}
+
+func InfoID(reqid, msg string) {
+	_global.Info(reqid, msg)
+}
+
+func WarnID(reqid, msg string) {
+	_global.Warn(reqid, msg)
+}
+
+func DebugID(reqid, msg string) {
+	_global.Debug(reqid, msg)
+}
+
+func FatalID(reqid, msg string) {
+	_global.Fatal(reqid, msg)
+}
+
+func PanicID(reqid, msg string) {
+	_global.Panic(reqid, msg)
+}
+
+func ErrorIDf(reqid, format string, args ...interface{}) {
+	_global.Errorf(reqid, format, args)
+}
+
+func InfoIDf(reqid, format string, args ...interface{}) {
+	_global.Infof(reqid, format, args)
+}
+
+func WarnIDf(reqid, format string, args ...interface{}) {
+	_global.Warnf(reqid, format, args)
+}
+
+func DebugIDf(reqid, format string, args ...interface{}) {
+	_global.Debugf(reqid, format, args)
+}
+
+func FatalIDf(reqid, format string, args ...interface{}) {
+	_global.Fatalf(reqid, format, args)
+}
+
+func PanicIDf(reqid, format string, args ...interface{}) {
+	_global.Panicf(reqid, format, args)
 }
 
 // Sync syncs _global.
