@@ -85,6 +85,11 @@ func MakeReqID(boxID uint32) string {
 	return v
 }
 
+func MakeReqIDBytes(boxID uint32, b []byte) {
+	binary.LittleEndian.PutUint64(b[:8], uint64(boxID)<<54|_instanceID)
+	binary.LittleEndian.PutUint64(b[8:16], uint64(tsc.UnixNano()))
+}
+
 // Buf will escape to heap because can't inline hex encoding.
 // So make a pool here.
 var reqPPool = sync.Pool{
