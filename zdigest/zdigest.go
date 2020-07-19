@@ -12,169 +12,89 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// BSD 3-Clause License
-//
-// Copyright (c) 2019, Meng Zhuo
-// All rights reserved.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are met:
-//
-// 1. Redistributions of source code must retain the above copyright notice, this
-// list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright notice,
-// this list of conditions and the following disclaimer in the documentation
-// and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the copyright holder nor the names of its
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// This file contains code derived from NABHash.
-// The main logic is copied from NABHash,
-// replacing 128bit digest with 32bit unsigned integer.
-
-// Package zdigest provides hash functions on byte sequences.
+// Package zdigest provides hash functions on byte sequences by wrapping xxhash.
 // These hash functions are intended to be used to implement zai object digest
 // that need to map byte sequences to a uniform distribution on unsigned 32-bit integers.
 //
 // For Zai, the needs of object digest:
-// 1. Extremely fast for big data (>4KB).
-// 2. Low collisions.
-//
-// Unlike hash.Hash, the zdigest usage:
-// 1.
-// d := New()
-// d.Write()
-// d.Sum32()
-// d.Reset()
-// d.Write()
-// d.Sum32()
-// ...
-// 2.
-// Sum32()
+// 1. Fast.
+// candidates: xxh3, xxhash, hashes based on AES, crc32
+// 2. Low collisions with 32bits sum.
+// candidates: xxh3_low, xxhash_low (hashes based on AES can't pass smhasher sparse test, crc32 can't pass smhasher avalanche test)
+// 3. Stable
+// candidates: xxh3 (may not change after v0.7.4), xxhash
+// 4. Could satisfy hash.Hash32 interface.
+// candidates: xxhash (xxh3 only has one-shot hash API)
 package zdigest
 
-const (
-	// Size of zdigest in bytes.
-	Size = 4
-
-	// BlockSize of zdigest in bytes.
-	BlockSize = 64
-
-	blockSizeMask = BlockSize - 1
+import (
+	"github.com/cespare/xxhash/v2"
+	"github.com/zaibyte/pkg/xstrconv"
 )
 
-var zeroData = make([]byte, BlockSize)
-
-var initState = state{
-	0x5A, 0x82, 0x79, 0x99, 0x6E, 0xD9, 0xEB, 0xA1,
-	0x8F, 0x1B, 0xBC, 0xDC, 0xCA, 0x62, 0xC1, 0xD6,
-	0x5A, 0x82, 0x79, 0x99, 0x6E, 0xD9, 0xEB, 0xA1,
-	0x8F, 0x1B, 0xBC, 0xDC, 0xCA, 0x62, 0xC1, 0xD6,
-	0x5A, 0x82, 0x79, 0x99, 0x6E, 0xD9, 0xEB, 0xA1,
-	0x8F, 0x1B, 0xBC, 0xDC, 0xCA, 0x62, 0xC1, 0xD6,
-	0x5A, 0x82, 0x79, 0x99, 0x6E, 0xD9, 0xEB, 0xA1,
-	0x8F, 0x1B, 0xBC, 0xDC, 0xCA, 0x62, 0xC1, 0xD6,
+type digest struct {
+	xxh *xxhash.Digest
 }
 
-var initStateBytes = []byte{
-	0x5A, 0x82, 0x79, 0x99, 0x6E, 0xD9, 0xEB, 0xA1,
-	0x8F, 0x1B, 0xBC, 0xDC, 0xCA, 0x62, 0xC1, 0xD6,
-	0x5A, 0x82, 0x79, 0x99, 0x6E, 0xD9, 0xEB, 0xA1,
-	0x8F, 0x1B, 0xBC, 0xDC, 0xCA, 0x62, 0xC1, 0xD6,
-	0x5A, 0x82, 0x79, 0x99, 0x6E, 0xD9, 0xEB, 0xA1,
-	0x8F, 0x1B, 0xBC, 0xDC, 0xCA, 0x62, 0xC1, 0xD6,
-	0x5A, 0x82, 0x79, 0x99, 0x6E, 0xD9, 0xEB, 0xA1,
-	0x8F, 0x1B, 0xBC, 0xDC, 0xCA, 0x62, 0xC1, 0xD6,
+// New creates a digest.
+func New() *digest {
+	return &digest{xxhash.New()}
 }
 
-var block = blockGeneric
-var final = finalGeneric
-var sum32 = sum32Generic
-
-type state [BlockSize]byte
-
-type Digest struct {
-	h      state
-	buf    state
-	length uint64
-	remain int
+// Write (via the embedded io.Writer interface) adds more data to the running hash.
+// It never returns an error.
+func (d *digest) Write(b []byte) (n int, err error) {
+	return d.xxh.Write(b)
 }
 
-// New return a new Digest computing the zdigest checksum.
-func New() *Digest {
-	d := &Digest{}
-	d.Reset()
-	return d
+// WriteString (via the embedded io.Writer interface) adds more data to the running hash.
+// It never returns an error.
+func (d *digest) WriteString(s string) (n int, err error) {
+	return d.Write(xstrconv.ToBytes(s))
 }
 
-// Write adds b to the sequence of bytes hashed by h.
-// It always writes all of b and never fails; the count and error result are for implementing io.Writer.
-func (d *Digest) Write(p []byte) (nn int, err error) {
-	nn = len(p)
-	if d.remain > 0 {
-		n := copy(d.buf[d.remain:], p)
-		d.remain += n
-		if d.remain == BlockSize {
-			block(&d.h, d.buf[:])
-			d.remain -= BlockSize
-		}
-		p = p[n:]
-	}
-
-	if len(p) >= BlockSize {
-		n := len(p) &^ blockSizeMask
-		block(&d.h, p[:n])
-		p = p[n:]
-	}
-
-	if len(p) > 0 {
-		d.remain = copy(d.buf[:], p)
-	}
-	d.length += uint64(nn)
-	return
+// Sum appends the current hash to b and returns the resulting slice.
+// It does not change the underlying hash state.
+func (d *digest) Sum(b []byte) []byte {
+	s := d.Sum32()
+	return append(
+		b,
+		byte(s>>24),
+		byte(s>>16),
+		byte(s>>8),
+		byte(s),
+	)
 }
 
-// Sum32 returns hash's current 32-bit value.
-func (d *Digest) Sum32() uint32 {
-	l := d.length
-	if l%BlockSize != 0 {
-		d.Write(zeroData[l%BlockSize:])
-	}
-	return final(&d.h, l)
+// Sum32 returns the current hash.
+func (d *digest) Sum32() uint32 {
+	return uint32(d.xxh.Sum64())
 }
 
-// Sums32 returns p's digest directly.
-// len(p) must > 0. TODO return 0 when len is 0?
-func Sum32(p []byte) uint32 {
-
-	if len(p) == 0 {
-		return 0
-	}
-
-	return sum32(p)
+// Reset resets the Hash to its initial state.
+func (d *digest) Reset() {
+	d.xxh.Reset()
 }
 
-func (d *Digest) Reset() {
-	d.remain = 0
-	d.length = 0
-	copy(d.h[:], initState[:])
-	d.buf = [BlockSize]byte{}
+// Size returns the number of bytes Sum will return.
+func (d *digest) Size() int {
+	return 4
 }
 
-func (d *Digest) Size() int { return Size }
+// BlockSize returns the hash's underlying block size.
+// The Write method must be able to accept any amount
+// of data, but it may operate more efficiently if all writes
+// are a multiple of the block size.
+func (d *digest) BlockSize() int {
+	return 32
+}
 
-func (d *Digest) BlockSize() int { return BlockSize }
+// Sum32 computes the 32-bit xxHash_low32bit digest of b.
+func Sum32(b []byte) uint32 {
+	return uint32(xxhash.Sum64(b))
+}
+
+// Sum32String computes the 32-bit xxHash_low32bit digest of b.
+func Sum32String(s string) uint32 {
+	return Sum32(xstrconv.ToBytes(s))
+}

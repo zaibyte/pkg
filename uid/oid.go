@@ -43,7 +43,7 @@ import (
 // Object types.
 const (
 	NormalObj uint8 = 1 // Normal Object, maximum size is 8MB.
-	LinkObj   uint8 = 2 // Link Object, it links 131072 objects together (at most).
+	LinkObj   uint8 = 2 // Link Object, it links 131072 objects together (at most 1TB).
 )
 
 const groupIDMask = (1 << 22) - 1
