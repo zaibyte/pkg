@@ -28,103 +28,103 @@ func InitGlobalLogger(logger *ErrorLogger) {
 
 // Write implements io.Writer
 func Write(p []byte) (n int, err error) {
-	_global.Error("", string(p))
+	_global.Error(0, string(p))
 	return len(p), nil
 }
 
 func Error(msg string) {
-	_global.Error("", msg)
+	_global.Error(0, msg)
 }
 
 func Info(msg string) {
-	_global.Info("", msg)
+	_global.Info(0, msg)
 }
 
 func Warn(msg string) {
-	_global.Warn("", msg)
+	_global.Warn(0, msg)
 }
 
 func Debug(msg string) {
-	_global.Debug("", msg)
+	_global.Debug(0, msg)
 }
 
 func Fatal(msg string) {
-	_global.Fatal("", msg)
+	_global.Fatal(0, msg)
 }
 
 func Panic(msg string) {
-	_global.Panic("", msg)
+	_global.Panic(0, msg)
 }
 
 func Errorf(format string, args ...interface{}) {
-	_global.Errorf("", format, args)
+	_global.Errorf(0, format, args)
 }
 
 func Infof(format string, args ...interface{}) {
-	_global.Infof("", format, args)
+	_global.Infof(0, format, args)
 }
 
 func Warnf(format string, args ...interface{}) {
-	_global.Warnf("", format, args)
+	_global.Warnf(0, format, args)
 }
 
 func Debugf(format string, args ...interface{}) {
-	_global.Debugf("", format, args)
+	_global.Debugf(0, format, args)
 }
 
 func Fatalf(format string, args ...interface{}) {
-	_global.Fatalf("", format, args)
+	_global.Fatalf(0, format, args)
 }
 
 func Panicf(format string, args ...interface{}) {
-	_global.Panicf("", format, args)
+	_global.Panicf(0, format, args)
 }
 
-func ErrorID(reqid, msg string) {
+func ErrorID(reqid uint64, msg string) {
 	_global.Error(reqid, msg)
 }
 
-func InfoID(reqid, msg string) {
+func InfoID(reqid uint64, msg string) {
 	_global.Info(reqid, msg)
 }
 
-func WarnID(reqid, msg string) {
+func WarnID(reqid uint64, msg string) {
 	_global.Warn(reqid, msg)
 }
 
-func DebugID(reqid, msg string) {
+func DebugID(reqid uint64, msg string) {
 	_global.Debug(reqid, msg)
 }
 
-func FatalID(reqid, msg string) {
+func FatalID(reqid uint64, msg string) {
 	_global.Fatal(reqid, msg)
 }
 
-func PanicID(reqid, msg string) {
+func PanicID(reqid uint64, msg string) {
 	_global.Panic(reqid, msg)
 }
 
-func ErrorIDf(reqid, format string, args ...interface{}) {
+func ErrorIDf(reqid uint64, format string, args ...interface{}) {
 	_global.Errorf(reqid, format, args)
 }
 
-func InfoIDf(reqid, format string, args ...interface{}) {
+func InfoIDf(reqid uint64, format string, args ...interface{}) {
 	_global.Infof(reqid, format, args)
 }
 
-func WarnIDf(reqid, format string, args ...interface{}) {
+func WarnIDf(reqid uint64, format string, args ...interface{}) {
 	_global.Warnf(reqid, format, args)
 }
 
-func DebugIDf(reqid, format string, args ...interface{}) {
+func DebugIDf(reqid uint64, format string, args ...interface{}) {
 	_global.Debugf(reqid, format, args)
 }
 
-func FatalIDf(reqid, format string, args ...interface{}) {
+func FatalIDf(reqid uint64, format string, args ...interface{}) {
 	_global.Fatalf(reqid, format, args)
 }
 
-func PanicIDf(reqid, format string, args ...interface{}) {
+func PanicIDf(reqid uint64, format string, args ...interface{}) {
 	_global.Panicf(reqid, format, args)
 }
 

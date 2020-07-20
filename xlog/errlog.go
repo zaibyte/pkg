@@ -109,55 +109,55 @@ func defaultEncoderConf() zapcore.EncoderConfig {
 
 // Write implements io.Writer
 func (l *ErrorLogger) Write(p []byte) (n int, err error) {
-	l.Error("", string(p))
+	l.Error(0, string(p))
 	return len(p), nil
 }
 
-func (l *ErrorLogger) Error(reqid, msg string) {
+func (l *ErrorLogger) Error(reqid uint64, msg string) {
 	l.l.Error(reqid, msg)
 }
 
-func (l *ErrorLogger) Info(reqid, msg string) {
+func (l *ErrorLogger) Info(reqid uint64, msg string) {
 	l.l.Info(reqid, msg)
 }
 
-func (l *ErrorLogger) Warn(reqid, msg string) {
+func (l *ErrorLogger) Warn(reqid uint64, msg string) {
 	l.l.Warn(reqid, msg)
 }
 
-func (l *ErrorLogger) Debug(reqid, msg string) {
+func (l *ErrorLogger) Debug(reqid uint64, msg string) {
 	l.l.Debug(reqid, msg)
 }
 
-func (l *ErrorLogger) Fatal(reqid, msg string) {
+func (l *ErrorLogger) Fatal(reqid uint64, msg string) {
 	l.l.Fatal(reqid, msg)
 }
 
-func (l *ErrorLogger) Panic(reqid, msg string) {
+func (l *ErrorLogger) Panic(reqid uint64, msg string) {
 	l.l.Panic(reqid, msg)
 }
 
-func (l *ErrorLogger) Errorf(reqid, format string, args ...interface{}) {
+func (l *ErrorLogger) Errorf(reqid uint64, format string, args ...interface{}) {
 	l.l.Errorf(reqid, format, args)
 }
 
-func (l *ErrorLogger) Infof(reqid, format string, args ...interface{}) {
+func (l *ErrorLogger) Infof(reqid uint64, format string, args ...interface{}) {
 	l.l.Infof(reqid, format, args)
 }
 
-func (l *ErrorLogger) Warnf(reqid, format string, args ...interface{}) {
+func (l *ErrorLogger) Warnf(reqid uint64, format string, args ...interface{}) {
 	l.l.Warnf(reqid, format, args)
 }
 
-func (l *ErrorLogger) Debugf(reqid, format string, args ...interface{}) {
+func (l *ErrorLogger) Debugf(reqid uint64, format string, args ...interface{}) {
 	l.l.Debugf(reqid, format, args)
 }
 
-func (l *ErrorLogger) Fatalf(reqid, format string, args ...interface{}) {
+func (l *ErrorLogger) Fatalf(reqid uint64, format string, args ...interface{}) {
 	l.l.Fatalf(reqid, format, args)
 }
 
-func (l *ErrorLogger) Panicf(reqid, format string, args ...interface{}) {
+func (l *ErrorLogger) Panicf(reqid uint64, format string, args ...interface{}) {
 	l.l.Panicf(reqid, format, args)
 }
 
