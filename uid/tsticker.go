@@ -24,7 +24,8 @@ import (
 const (
 	// epoch is an Unix time.
 	// 2020-06-03T08:39:34.000+0800.
-	epoch int64 = 1591144774
+	epoch     int64 = 1591144774
+	epochNano int64 = epoch * int64(time.Second)
 	// doom is the zai's max Unix time.
 	// It will reach the end after 136 years from epoch.
 	doom int64 = 5880040774 // epoch + 136 years (about 2^32 seconds).
@@ -85,4 +86,10 @@ func StopTicker() {
 func TsToTime(ts uint32) time.Time {
 	sec := int64(ts) + epoch
 	return time.Unix(sec, 0)
+}
+
+// TsNanoToTime converts zai nanosecond ts to time.
+func TsNanoToTime(ts uint64) time.Time {
+	nano := int64(ts) + epochNano
+	return time.Unix(0, nano)
 }

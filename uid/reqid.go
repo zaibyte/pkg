@@ -17,104 +17,43 @@
 package uid
 
 import (
-	"encoding/binary"
-	"encoding/hex"
-	"sync"
+	"math/rand"
 	"time"
 
 	"github.com/templexxx/tsc"
-	"github.com/templexxx/xhex"
-
-	"github.com/zaibyte/pkg/xstrconv"
 )
 
 // reqid struct:
-// +-----------+------------+-----------------+---------------+
-// | boxID(10) | padding(6) |  instanceID(48) | timestamp(64) |
-// +-----------+------------+-----------------+---------------+
+// +-----------+---------------+
+// | randID(2) | timestamp(62) |
+// +-----------+---------------+
 //
-// Total length: 16B.
+// Total length: 8B (After hex encoding, it's 16B).
 //
-// boxID: 10bit
-// padding: 6bit
-// instanceID: 48bit
-// timestamp: 64bit
+// randID: 2bit
+// timestamp: 62bit
 //
-// Because timestamp's precision is nanosecond,
+// Because timestamp's precision is nanosecond (details see tsc.UnixNano()),
 // and getting timestamp has cost too,
-// so it's impossible to find two same reqid
-// even multi apps run on the same machine(has same instanceID).
+// so it's almost impossible to find two same reqid with 2bit randID.
 
-var _instanceID = instanceIdToUint64()
-
-const instanceIDMask = (1 << 48) - 1
-
-func instanceIdToUint64() uint64 {
-	b := makeInstanceIDBytes()
-	p := make([]byte, 8)
-	copy(p[:6], b)
-	return binary.LittleEndian.Uint64(p)
-}
-
-// Buf will escape to heap because can't inline hex encoding.
-// So make a pool here.
-var reqMPool = sync.Pool{
-	New: func() interface{} {
-		p := make([]byte, 16+32)
-		return &p
-	},
-}
+var _randID = uint64(rand.New(rand.NewSource(tsc.UnixNano())).Int63n(4))
 
 // MakeReqID makes a request ID.
-// Request ID is encoded in 128bit hex codes which is as same as Jaeger.
+// Request ID is encoded in 64bit unsigned integer.
 //
 // Warn:
 // Maybe not unique but it's acceptable.
-func MakeReqID(boxID uint32) string {
+func MakeReqID() uint64 {
 
-	p := reqMPool.Get().(*[]byte)
-	b := *p
-
-	binary.LittleEndian.PutUint64(b[:8], uint64(boxID)<<54|_instanceID)
-	binary.LittleEndian.PutUint64(b[8:16], uint64(tsc.UnixNano()))
-
-	xhex.Encode(b[16:16+32], b[:16])
-	v := string(b[16 : 16+32])
-	reqMPool.Put(p)
-
-	return v
+	return _randID<<62 | (uint64(tsc.UnixNano()) - uint64(epochNano))
 }
 
-func MakeReqIDBytes(boxID uint32, b []byte) {
-	binary.LittleEndian.PutUint64(b[:8], uint64(boxID)<<54|_instanceID)
-	binary.LittleEndian.PutUint64(b[8:16], uint64(tsc.UnixNano()))
-}
-
-// Buf will escape to heap because can't inline hex encoding.
-// So make a pool here.
-var reqPPool = sync.Pool{
-	New: func() interface{} {
-		p := make([]byte, 16)
-		return &p
-	},
-}
+const reqTSMask = (1 << 62) - 1
 
 // ParseReqID parses reqID.
-func ParseReqID(reqID string) (boxID uint32, instanceID string, t time.Time, err error) {
+func ParseReqID(reqID uint64) (t time.Time) {
 
-	p := reqPPool.Get().(*[]byte)
-	b := *p
-
-	err = xhex.Decode(b[:16], xstrconv.ToBytes(reqID))
-	if err != nil {
-		reqPPool.Put(p)
-		return
-	}
-	bi := binary.LittleEndian.Uint64(b[:8])
-	boxID = uint32(bi >> 54)
-	instanceID = hex.EncodeToString(b[0:6])
-	t = time.Unix(0, int64(binary.LittleEndian.Uint64(b[8:16])))
-	reqPPool.Put(p)
-
-	return
+	ts := reqID & reqTSMask
+	return TsNanoToTime(ts)
 }

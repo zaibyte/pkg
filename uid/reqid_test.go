@@ -41,7 +41,7 @@ func TestParseReqID(t *testing.T) {
 			defer wg.Done()
 
 			boxID := uint32(seed + 1)
-			reqid := MakeReqID(boxID)
+			reqid := MakeReqID()
 			reqids.Store(boxID, reqid)
 
 		}(i)
@@ -57,11 +57,8 @@ func TestParseReqID(t *testing.T) {
 			boxID := uint32(i + 1)
 			v, ok := reqids.Load(boxID)
 			assert.True(t, ok)
-			reqID := v.(string)
-			actBoxID, actInstanceID, actTime, err := ParseReqID(reqID)
-			assert.Nil(t, err)
-			assert.Equal(t, boxID, actBoxID)
-			assert.Equal(t, MakeInstanceID(), actInstanceID)
+			reqID := v.(uint64)
+			actTime := ParseReqID(reqID)
 			assert.Equal(t, expTime.Unix(), actTime.Unix())
 		}(i)
 	}
@@ -71,7 +68,7 @@ func TestParseReqID(t *testing.T) {
 func BenchmarkMakeReqID(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
-		_ = MakeReqID(1)
+		_ = MakeReqID()
 	}
 }
 
@@ -79,27 +76,27 @@ func BenchmarkMakeReqID_Parallel(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_ = MakeReqID(1)
+			_ = MakeReqID()
 		}
 	})
 }
 
 func BenchmarkParseReqID(b *testing.B) {
 
-	s := MakeReqID(1)
+	s := MakeReqID()
 
 	for i := 0; i < b.N; i++ {
-		_, _, _, _ = ParseReqID(s)
+		_ = ParseReqID(s)
 	}
 }
 
 func BenchmarkParseReqID_Parallel(b *testing.B) {
 
-	s := MakeReqID(1)
+	s := MakeReqID()
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_, _, _, _ = ParseReqID(s)
+			_ = ParseReqID(s)
 		}
 	})
 }
