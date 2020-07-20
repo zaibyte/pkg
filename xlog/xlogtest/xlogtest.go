@@ -48,13 +48,13 @@ func New(pattern string) *xlog.ErrorLogger {
 		panic(err)
 	}
 
-	svrCfg := &xlog.Config{
+	cfg := &xlog.Config{
 		Output: filepath.Join(logDir, logName),
 		Level:  "",
 		Rotate: xlog.RotateConfig{},
 	}
 
-	el, err = svrCfg.MakeLogger("test")
+	el, err = cfg.MakeLogger("test")
 	if err != nil {
 		panic(err)
 	}

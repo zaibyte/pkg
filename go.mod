@@ -8,6 +8,7 @@ require (
 	github.com/docker/go-units v0.4.0
 	github.com/google/uuid v1.1.1
 	github.com/juju/ratelimit v1.0.2-0.20191002062651-f60b32039441
+	github.com/julienschmidt/httprouter v1.2.0
 	github.com/lni/dragonboat/v3 v3.2.2
 	github.com/lni/goutils v1.2.0
 	github.com/prometheus/client_golang v1.6.0

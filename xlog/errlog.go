@@ -88,6 +88,7 @@ func NewErrorLogger(outputPath, level string, rCfg *RotateConfig) (logger *Error
 
 	return &ErrorLogger{
 		l:        nanozap.New(core),
+		lvl:      lvl,
 		rotation: r,
 	}, nil
 }
