@@ -41,10 +41,7 @@ func makeTestServer() (err error) {
 
 	xlogtest.New("test-xhttp")
 
-	var testBoxID uint32 = 1
-
 	srv := NewServer(&ServerConfig{
-		BoxID:             testBoxID,
 		Encrypted:         false,
 		CertFile:          "",
 		KeyFile:           "",
@@ -54,7 +51,7 @@ func makeTestServer() (err error) {
 	testServer = httptest.NewServer(srv.srv.Handler)
 	testSrvAddr = testServer.URL
 
-	testClient, _ = NewDefaultClient(testBoxID)
+	testClient, _ = NewDefaultClient()
 
 	return nil
 }

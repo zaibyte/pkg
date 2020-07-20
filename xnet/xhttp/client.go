@@ -33,12 +33,8 @@ import (
 	"github.com/zaibyte/pkg/xnet"
 )
 
-const UserAgent = "zai"
-
 // Client is an xhttp client.
 type Client struct {
-	boxID uint32
-
 	c         *http.Client
 	encrypted bool
 	addScheme func(url string) string
@@ -68,12 +64,12 @@ var (
 )
 
 // NewDefaultClient creates a Client with default configs.
-func NewDefaultClient(boxID uint32) (*Client, error) {
-	return NewClient(boxID, false, "", "")
+func NewDefaultClient() (*Client, error) {
+	return NewClient(false, "", "")
 }
 
 // NewClient creates a Client with tls configs.
-func NewClient(boxID uint32, encrypted bool, certFile, keyFile string) (*Client, error) {
+func NewClient(encrypted bool, certFile, keyFile string) (*Client, error) {
 
 	tp := DefaultTransport
 
@@ -106,12 +102,12 @@ func NewClient(boxID uint32, encrypted bool, certFile, keyFile string) (*Client,
 		tp.TLSClientConfig = tc
 	}
 
-	return NewClientWithTransport(boxID, tp), nil
+	return NewClientWithTransport(tp), nil
 }
 
 // NewClientWithTransport creates a Client with a transport.
 // If transport == nil, use DefaultTransport.
-func NewClientWithTransport(boxID uint32, transport *http.Transport) *Client {
+func NewClientWithTransport(transport *http.Transport) *Client {
 
 	if transport == nil {
 		transport = DefaultTransport
@@ -123,7 +119,6 @@ func NewClientWithTransport(boxID uint32, transport *http.Transport) *Client {
 	}
 
 	return &Client{
-		boxID: boxID,
 		c: &http.Client{
 			Transport: transport,
 		},
@@ -162,7 +157,7 @@ func (c *Client) Request(ctx context.Context, method, url, reqID string, buf []b
 		return
 	}
 	if reqID == "" {
-		reqID = uid.MakeReqID(c.boxID)
+		reqID = strconv.FormatUint(uid.MakeReqID(), 10)
 	}
 	req.Header.Set(ReqIDHeader, reqID)
 

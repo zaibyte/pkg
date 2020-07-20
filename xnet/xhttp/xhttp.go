@@ -24,8 +24,15 @@
 // 4. Wrap some basic methods/functions, make it easier to use.
 package xhttp
 
+import "strconv"
+
 // These header names will be added in HTTP header in Zai.
 const (
 	ReqIDHeader    = "x-zai-request-id"
 	ChecksumHeader = "x-zai-checksum"
 )
+
+func reqIDStrToInt(s string) uint64 {
+	u, _ := strconv.ParseUint(s, 10, 64)
+	return u
+}

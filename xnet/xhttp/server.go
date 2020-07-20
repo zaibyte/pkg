@@ -42,7 +42,6 @@ import (
 
 // ServerConfig is the config of Server.
 type ServerConfig struct {
-	BoxID   uint32
 	Address string
 
 	Encrypted         bool
@@ -171,7 +170,7 @@ func (s *Server) must(next HandlerFunc) httprouter.Handle {
 
 		reqID := r.Header.Get(ReqIDHeader)
 		if reqID == "" {
-			reqID = uid.MakeReqID(s.cfg.BoxID)
+			reqID = strconv.FormatUint(uid.MakeReqID(), 10)
 		}
 		w.Header().Set(ReqIDHeader, reqID)
 
@@ -241,7 +240,8 @@ func (s *Server) addDefaultHandler() {
 func (s *Server) debug(w http.ResponseWriter, r *http.Request,
 	p httprouter.Params) (written, status int) {
 
-	reqID := w.Header().Get(ReqIDHeader)
+	reqIDS := w.Header().Get(ReqIDHeader)
+	reqID := reqIDStrToInt(reqIDS)
 
 	cmd := p.ByName("cmd")
 	switch cmd {
@@ -293,7 +293,7 @@ func ReplyError(w http.ResponseWriter, msg string, statusCode int) (written, sta
 	w.WriteHeader(statusCode)
 	written, err := fmt.Fprintln(w, msg)
 	if err != nil {
-		xlog.ErrorID(w.Header().Get(ReqIDHeader), makeReplyErrMsg(err))
+		xlog.ErrorID(reqIDStrToInt(w.Header().Get(ReqIDHeader)), makeReplyErrMsg(err))
 	}
 	return written, statusCode
 }
@@ -310,7 +310,7 @@ func ReplyJson(w http.ResponseWriter, ret interface{}, statusCode int) (written,
 	w.WriteHeader(statusCode)
 	written, err := w.Write(msg)
 	if err != nil {
-		xlog.ErrorID(w.Header().Get(ReqIDHeader), makeReplyErrMsg(err))
+		xlog.ErrorID(reqIDStrToInt(w.Header().Get(ReqIDHeader)), makeReplyErrMsg(err))
 	}
 	return written, statusCode
 }
@@ -323,7 +323,7 @@ func ReplyBin(w http.ResponseWriter, ret io.Reader, length int64) (written, stat
 	w.WriteHeader(http.StatusOK)
 	n, err := io.CopyN(w, ret, length)
 	if err != nil {
-		xlog.ErrorID(w.Header().Get(ReqIDHeader), makeReplyErrMsg(err))
+		xlog.ErrorID(reqIDStrToInt(w.Header().Get(ReqIDHeader)), makeReplyErrMsg(err))
 	}
 	return int(n), http.StatusOK
 }
