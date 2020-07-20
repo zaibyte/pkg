@@ -48,7 +48,7 @@ func TestOID(t *testing.T) {
 			size := uint32(seed + 4)
 			otype := uint8(seed & 7)
 
-			oid := MakeOID(boxID, extID, digest, size, otype)
+			_, oid := MakeOID(boxID, extID, digest, size, otype)
 			oidStrs.Store(seed, oid)
 
 		}(i)
@@ -93,7 +93,7 @@ func BenchmarkMakeOID(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_ = MakeOID(1, 1, 1, 1, 1)
+		_, _ = MakeOID(1, 1, 1, 1, 1)
 	}
 }
 
@@ -106,7 +106,7 @@ func BenchmarkMakeOID_Parallel(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_ = MakeOID(1, 1, 1, 1, 1)
+			_, _ = MakeOID(1, 1, 1, 1, 1)
 		}
 	})
 }
@@ -118,7 +118,7 @@ func BenchmarkParseOID(b *testing.B) {
 
 	b.ResetTimer()
 
-	oid := MakeOID(1, 2, 3, 4, 1)
+	_, oid := MakeOID(1, 2, 3, 4, 1)
 
 	for i := 0; i < b.N; i++ {
 		_, _, _, _, _, _, _ = ParseOID(oid)
@@ -132,7 +132,7 @@ func BenchmarkParseOID_Parallel(b *testing.B) {
 
 	b.ResetTimer()
 
-	oid := MakeOID(1, 2, 3, 4, 1)
+	_, oid := MakeOID(1, 2, 3, 4, 1)
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {

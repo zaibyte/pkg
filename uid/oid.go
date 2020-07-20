@@ -56,13 +56,23 @@ var oidMPool = sync.Pool{
 }
 
 // MakeOID makes oid.
-func MakeOID(boxID, groupID, digest, size uint32, otype uint8) string {
+// Returns ts & hex codes.
+func MakeOID(boxID, groupID, digest, size uint32, otype uint8) (uint32, string) {
+
+	ts := atomic.LoadUint32(&ticker.ts)
+
+	return ts, MakeOIDWithTS(boxID, groupID, ts, digest, size, otype)
+}
+
+// MakeOIDWithTS makes oid with provided ts.
+// Returns hex codes.
+func MakeOIDWithTS(boxID, groupID, ts, digest, size uint32, otype uint8) string {
 
 	p := oidMPool.Get().(*[]byte)
 	b := *p
 
 	binary.LittleEndian.PutUint32(b[:4], boxID<<22|groupID)
-	binary.LittleEndian.PutUint32(b[4:8], atomic.LoadUint32(&ticker.ts))
+	binary.LittleEndian.PutUint32(b[4:8], ts)
 
 	binary.LittleEndian.PutUint32(b[8:12], digest)
 	binary.LittleEndian.PutUint32(b[12:16], size<<8|uint32(otype))
