@@ -19,6 +19,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"io/ioutil"
 	"log"
@@ -175,7 +176,8 @@ func (s *Server) must(next HandlerFunc) httprouter.Handle {
 		w.Header().Set(ReqIDHeader, reqID)
 
 		if !s.cfg.Encrypted {
-			checksum, err := strconv.Atoi(r.Header.Get(ChecksumHeader))
+
+			incoming, err := strconv.Atoi(r.Header.Get(ChecksumHeader))
 			if err != nil {
 				ReplyError(w, ErrHeaderCheckFailedMsg, http.StatusBadRequest)
 				return
@@ -187,7 +189,10 @@ func (s *Server) must(next HandlerFunc) httprouter.Handle {
 				return
 			}
 
-			if checksum != int(xnet.Checksum(b)) {
+			h := crc32.New(xnet.CrcTbl)
+			h.Write([]byte(r.URL.RequestURI()))
+			h.Write(b)
+			if incoming != int(h.Sum32()) {
 				ReplyError(w, ErrHeaderCheckFailedMsg, http.StatusBadRequest)
 				return
 			}

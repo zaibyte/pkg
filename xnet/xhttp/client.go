@@ -21,6 +21,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"hash/crc32"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -162,7 +163,10 @@ func (c *Client) Request(ctx context.Context, method, url, reqID string, buf []b
 	req.Header.Set(ReqIDHeader, reqID)
 
 	if !c.encrypted {
-		req.Header.Set(ChecksumHeader, strconv.Itoa(int(xnet.Checksum(buf))))
+		h := crc32.New(xnet.CrcTbl)
+		h.Write([]byte(req.URL.RequestURI()))
+		h.Write(buf)
+		req.Header.Set(ChecksumHeader, strconv.Itoa(int(h.Sum32())))
 	}
 
 	resp, err = c.c.Do(req)
