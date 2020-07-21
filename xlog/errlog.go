@@ -39,9 +39,9 @@ type RotateConfig struct {
 // In practice, ErrorLogger is just a global logger's container,
 // it won't be used directly.
 type ErrorLogger struct {
-	l        *nanozap.Logger
-	lvl      nanozap.AtomicLevel
-	rotation *zaproll.Rotation
+	Logger   *nanozap.Logger
+	Lvl      nanozap.AtomicLevel
+	Rotation *zaproll.Rotation
 }
 
 // ErrLogFields shows error logger output fields.
@@ -84,17 +84,17 @@ func NewErrorLogger(outputPath, level string, rCfg *RotateConfig) (logger *Error
 		return
 	}
 
-	core := zapcore.NewCore(zapcore.NewJSONEncoder(defaultEncoderConf()), r, lvl)
+	core := zapcore.NewCore(zapcore.NewJSONEncoder(DefaultEncoderConfig()), r, lvl)
 
 	return &ErrorLogger{
-		l:        nanozap.New(core),
-		lvl:      lvl,
-		rotation: r,
+		Logger:   nanozap.New(core),
+		Lvl:      lvl,
+		Rotation: r,
 	}, nil
 }
 
-// default without caller and stack trace,
-func defaultEncoderConf() zapcore.EncoderConfig {
+// DefaultEncoderConfig is the default logger config.
+func DefaultEncoderConfig() zapcore.EncoderConfig {
 	return zapcore.EncoderConfig{
 		MessageKey:     "msg",
 		LevelKey:       "level",
@@ -114,61 +114,64 @@ func (l *ErrorLogger) Write(p []byte) (n int, err error) {
 }
 
 func (l *ErrorLogger) Error(reqid uint64, msg string) {
-	l.l.Error(reqid, msg)
+	l.Logger.Error(reqid, msg)
 }
 
 func (l *ErrorLogger) Info(reqid uint64, msg string) {
-	l.l.Info(reqid, msg)
+	l.Logger.Info(reqid, msg)
 }
 
 func (l *ErrorLogger) Warn(reqid uint64, msg string) {
-	l.l.Warn(reqid, msg)
+	l.Logger.Warn(reqid, msg)
 }
 
 func (l *ErrorLogger) Debug(reqid uint64, msg string) {
-	l.l.Debug(reqid, msg)
+	l.Logger.Debug(reqid, msg)
 }
 
 func (l *ErrorLogger) Fatal(reqid uint64, msg string) {
-	l.l.Fatal(reqid, msg)
+	l.Logger.Fatal(reqid, msg)
 }
 
 func (l *ErrorLogger) Panic(reqid uint64, msg string) {
-	l.l.Panic(reqid, msg)
+	l.Logger.Panic(reqid, msg)
 }
 
 func (l *ErrorLogger) Errorf(reqid uint64, format string, args ...interface{}) {
-	l.l.Errorf(reqid, format, args)
+	l.Logger.Errorf(reqid, format, args)
 }
 
 func (l *ErrorLogger) Infof(reqid uint64, format string, args ...interface{}) {
-	l.l.Infof(reqid, format, args)
+	l.Logger.Infof(reqid, format, args)
 }
 
 func (l *ErrorLogger) Warnf(reqid uint64, format string, args ...interface{}) {
-	l.l.Warnf(reqid, format, args)
+	l.Logger.Warnf(reqid, format, args)
 }
 
 func (l *ErrorLogger) Debugf(reqid uint64, format string, args ...interface{}) {
-	l.l.Debugf(reqid, format, args)
+	l.Logger.Debugf(reqid, format, args)
 }
 
 func (l *ErrorLogger) Fatalf(reqid uint64, format string, args ...interface{}) {
-	l.l.Fatalf(reqid, format, args)
+	l.Logger.Fatalf(reqid, format, args)
 }
 
 func (l *ErrorLogger) Panicf(reqid uint64, format string, args ...interface{}) {
-	l.l.Panicf(reqid, format, args)
+	l.Logger.Panicf(reqid, format, args)
 }
 
 // Sync syncs ErrorLogger.
 func (l *ErrorLogger) Sync() error {
-	return l.l.Sync()
+	return l.Logger.Sync()
 }
 
 func (l *ErrorLogger) Close() error {
-	l.l.Close()
-	return l.rotation.Close()
+	l.Logger.Close()
+	if l.Rotation != nil {
+		return l.Rotation.Close()
+	}
+	return nil
 }
 
 func (l *ErrorLogger) SetLevel(level string) error {
@@ -178,11 +181,11 @@ func (l *ErrorLogger) SetLevel(level string) error {
 		return err
 	}
 
-	l.lvl.SetLevel(lvl.Level())
+	l.Lvl.SetLevel(lvl.Level())
 	return nil
 }
 
 // GetLvl return lvl in string.
 func (l *ErrorLogger) GetLvl() string {
-	return l.lvl.String()
+	return l.Lvl.String()
 }

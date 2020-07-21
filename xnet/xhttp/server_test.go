@@ -39,7 +39,7 @@ var (
 
 func makeTestServer() (err error) {
 
-	xlogtest.New("test-xhttp")
+	xlogtest.New()
 
 	srv := NewServer(&ServerConfig{
 		Encrypted:         false,
@@ -58,7 +58,7 @@ func makeTestServer() (err error) {
 
 func cleanup() {
 	testServer.Close()
-	xlogtest.Clean()
+	xlogtest.Close()
 }
 
 func TestMain(m *testing.M) {
