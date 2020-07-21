@@ -27,9 +27,6 @@ import (
 
 func TestOID(t *testing.T) {
 
-	StartTicker()
-	defer StopTicker()
-
 	oidStrs := new(sync.Map)
 
 	// Because it's fast, second ts won't change.
@@ -87,22 +84,12 @@ func TestOID(t *testing.T) {
 
 func BenchmarkMakeOID(b *testing.B) {
 
-	StartTicker()
-	defer StopTicker()
-
-	b.ResetTimer()
-
 	for i := 0; i < b.N; i++ {
 		_, _ = MakeOID(1, 1, 1, 1, 1)
 	}
 }
 
 func BenchmarkMakeOID_Parallel(b *testing.B) {
-
-	StartTicker()
-	defer StopTicker()
-
-	b.ResetTimer()
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
@@ -113,11 +100,6 @@ func BenchmarkMakeOID_Parallel(b *testing.B) {
 
 func BenchmarkParseOID(b *testing.B) {
 
-	StartTicker()
-	defer StopTicker()
-
-	b.ResetTimer()
-
 	_, oid := MakeOID(1, 2, 3, 4, 1)
 
 	for i := 0; i < b.N; i++ {
@@ -126,11 +108,6 @@ func BenchmarkParseOID(b *testing.B) {
 }
 
 func BenchmarkParseOID_Parallel(b *testing.B) {
-
-	StartTicker()
-	defer StopTicker()
-
-	b.ResetTimer()
 
 	_, oid := MakeOID(1, 2, 3, 4, 1)
 

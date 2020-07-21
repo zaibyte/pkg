@@ -15,6 +15,7 @@
 package uid
 
 import (
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -25,7 +26,7 @@ const (
 	// epoch is an Unix time.
 	// 2020-06-03T08:39:34.000+0800.
 	epoch     int64 = 1591144774
-	epochNano int64 = epoch * int64(time.Second)
+	epochNano       = epoch * int64(time.Second)
 	// doom is the zai's max Unix time.
 	// It will reach the end after 136 years from epoch.
 	doom int64 = 5880040774 // epoch + 136 years (about 2^32 seconds).
@@ -45,21 +46,29 @@ type tsTicker struct {
 	closed chan bool
 }
 
-// StartTicker starts the ticker which running in background.
-func StartTicker() {
+func init() {
+	startTicker()
+}
 
-	now := time.Now().Unix()
-	if now > doom {
-		panic("zai met its doom")
-	}
+var _startOnce sync.Once
 
-	ticker = &tsTicker{
-		ts:     uint32(now - epoch),
-		ticker: time.NewTicker(time.Second),
-		closed: make(chan bool),
-	}
+// startTicker starts the ticker which running in background.
+func startTicker() {
 
-	go logicalTimeMovLoop()
+	_startOnce.Do(func() {
+		now := time.Now().Unix()
+		if now > doom {
+			panic("zai met its doom")
+		}
+
+		ticker = &tsTicker{
+			ts:     uint32(now - epoch),
+			ticker: time.NewTicker(time.Second),
+			closed: make(chan bool),
+		}
+
+		go logicalTimeMovLoop()
+	})
 }
 
 func logicalTimeMovLoop() {
