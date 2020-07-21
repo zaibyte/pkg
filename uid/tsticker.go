@@ -47,7 +47,9 @@ type tsTicker struct {
 }
 
 func init() {
-	startTicker()
+	_startOnce.Do(func() {
+		startTicker()
+	})
 }
 
 var _startOnce sync.Once
@@ -55,20 +57,18 @@ var _startOnce sync.Once
 // startTicker starts the ticker which running in background.
 func startTicker() {
 
-	_startOnce.Do(func() {
-		now := time.Now().Unix()
-		if now > doom {
-			panic("zai met its doom")
-		}
+	now := time.Now().Unix()
+	if now > doom {
+		panic("zai met its doom")
+	}
 
-		ticker = &tsTicker{
-			ts:     uint32(now - epoch),
-			ticker: time.NewTicker(time.Second),
-			closed: make(chan bool),
-		}
+	ticker = &tsTicker{
+		ts:     uint32(now - epoch),
+		ticker: time.NewTicker(time.Second),
+		closed: make(chan bool),
+	}
 
-		go logicalTimeMovLoop()
-	})
+	go logicalTimeMovLoop()
 }
 
 func logicalTimeMovLoop() {
