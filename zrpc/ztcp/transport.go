@@ -129,7 +129,8 @@ func (ln *defaultListener) Accept() (conn net.Conn, clientAddr string, err error
 	if err != nil {
 		return nil, "", err
 	}
-	if err = setupKeepalive(c); err != nil {
+	tcpConn := c.(*net.TCPConn)
+	if err = setTCPConn(tcpConn); err != nil {
 		c.Close()
 		return nil, "", err
 	}
@@ -138,17 +139,6 @@ func (ln *defaultListener) Accept() (conn net.Conn, clientAddr string, err error
 
 func (ln *defaultListener) Close() error {
 	return ln.L.Close()
-}
-
-func setupKeepalive(conn net.Conn) error {
-	tcpConn := conn.(*net.TCPConn)
-	if err := tcpConn.SetKeepAlive(true); err != nil {
-		return err
-	}
-	if err := tcpConn.SetKeepAlivePeriod(30 * time.Second); err != nil {
-		return err
-	}
-	return nil
 }
 
 type netListener struct {
