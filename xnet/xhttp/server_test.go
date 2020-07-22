@@ -28,9 +28,6 @@ import (
 )
 
 var (
-	testBoxID  int64
-	testLogDir string
-
 	testServer  *httptest.Server
 	testSrvAddr string
 

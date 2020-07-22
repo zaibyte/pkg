@@ -20,16 +20,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
-	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"os"
-	"os/signal"
 	"strconv"
 	"strings"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/zaibyte/pkg/config"
@@ -59,12 +55,9 @@ const (
 
 // Server implements methods to build & run a HTTP server.
 type Server struct {
-	cfg *ServerConfig
-
+	cfg    *ServerConfig
 	router *httprouter.Router
 	srv    *http.Server
-
-	onFinish []func() error // run these functions before exit
 }
 
 func parseConfig(cfg *ServerConfig) {
@@ -88,7 +81,6 @@ func NewServer(cfg *ServerConfig) (s *Server) {
 	}
 
 	s.addDefaultHandler()
-	s.addDefaultOnFinish()
 
 	s.srv = &http.Server{
 		Addr:     cfg.Address,
@@ -114,17 +106,8 @@ func (s *Server) AddHandler(method, path string, handler HandlerFunc, limit int6
 	s.router.Handle(method, path, s.must(handler))
 }
 
-// AddOnFinish adds function that will run before exit.
-func (s *Server) AddOnFinish(f func() error) {
-	s.onFinish = append(s.onFinish, f)
-}
-
-func (s *Server) addDefaultOnFinish() {
-	s.AddOnFinish(xlog.Sync)
-}
-
-// Run starts the Server and implements graceful shutdown.
-func (s *Server) Run() {
+// Start starts the Server.
+func (s *Server) Start() {
 
 	go func() {
 		if s.cfg.Encrypted && s.cfg.CertFile != "" && s.cfg.KeyFile != "" {
@@ -137,32 +120,13 @@ func (s *Server) Run() {
 			}
 		}
 	}()
+}
 
-	c := make(chan os.Signal, 2)
-	signal.Notify(c,
-		syscall.SIGHUP,
-		syscall.SIGINT,
-		syscall.SIGTERM,
-		syscall.SIGQUIT)
-
-	sig := <-c
-	msg := fmt.Sprintf("got signal to exit, signal %s", sig.String())
-	xlog.Info(msg)
-
+// Close closes Server.
+func (s *Server) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 	defer cancel()
-	s.srv.Shutdown(ctx)
-
-	for _, f := range s.onFinish {
-		f()
-	}
-
-	switch sig {
-	case syscall.SIGTERM:
-		os.Exit(0)
-	default:
-		os.Exit(1)
-	}
+	return s.srv.Shutdown(ctx)
 }
 
 // must adds the headers which zai must have and check request body.
@@ -242,7 +206,7 @@ func (s *Server) addDefaultHandler() {
 	s.AddHandler(http.MethodGet, "/v1/code-version", s.version, 1)
 }
 
-func (s *Server) debug(w http.ResponseWriter, r *http.Request,
+func (s *Server) debug(w http.ResponseWriter, _ *http.Request,
 	p httprouter.Params) (written, status int) {
 
 	reqIDS := w.Header().Get(ReqIDHeader)
@@ -251,23 +215,22 @@ func (s *Server) debug(w http.ResponseWriter, r *http.Request,
 	cmd := p.ByName("cmd")
 	switch cmd {
 	case "on":
-		xlog.SetLevel("debug")
+		_ = xlog.SetLevel("debug")
 		xlog.DebugID(reqID, "debug on")
 	default:
-		xlog.SetLevel("info")
+		_ = xlog.SetLevel("info")
 		xlog.InfoID(reqID, "debug off")
 	}
 
 	return ReplyCode(w, http.StatusOK)
 }
 
-func (s *Server) version(w http.ResponseWriter, r *http.Request,
-	p httprouter.Params) (written, status int) {
+func (s *Server) version(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) (written, status int) {
 
 	return ReplyJson(w, &version.Info{
-		version.ReleaseVersion,
-		version.GitHash,
-		version.GitBranch,
+		Version:   version.ReleaseVersion,
+		GitHash:   version.GitHash,
+		GitBranch: version.GitBranch,
 	}, http.StatusOK)
 }
 
@@ -318,19 +281,6 @@ func ReplyJson(w http.ResponseWriter, ret interface{}, statusCode int) (written,
 		xlog.ErrorID(reqIDStrToInt(w.Header().Get(ReqIDHeader)), makeReplyErrMsg(err))
 	}
 	return written, statusCode
-}
-
-// ReplyBin replies to the request with specified ret(in Binary) and length.
-func ReplyBin(w http.ResponseWriter, ret io.Reader, length int64) (written, status int) {
-
-	w.Header().Set("Content-Length", strconv.FormatInt(length, 10))
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.WriteHeader(http.StatusOK)
-	n, err := io.CopyN(w, ret, length)
-	if err != nil {
-		xlog.ErrorID(reqIDStrToInt(w.Header().Get(ReqIDHeader)), makeReplyErrMsg(err))
-	}
-	return int(n), http.StatusOK
 }
 
 func makeReplyErrMsg(err error) string {
