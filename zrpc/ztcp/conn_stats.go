@@ -40,7 +40,6 @@
 package ztcp
 
 import (
-	"io"
 	"sync"
 	"time"
 )
@@ -117,36 +116,4 @@ func (cs *ConnStats) AvgRPCBytes() (send float64, recv float64) {
 // since the original stats can be updated by concurrently running goroutines.
 func (cs *ConnStats) AvgRPCCalls() (write float64, read float64) {
 	return float64(cs.WriteCalls) / float64(cs.RPCCalls), float64(cs.ReadCalls) / float64(cs.RPCCalls)
-}
-
-type writerCounter struct {
-	w  io.Writer
-	cs *ConnStats
-}
-
-type readerCounter struct {
-	r  io.Reader
-	cs *ConnStats
-}
-
-func newWriterCounter(w io.Writer) io.Writer {
-	return &writerCounter{
-		w: w,
-	}
-}
-
-func newReaderCounter(r io.Reader) io.Reader {
-	return &readerCounter{
-		r: r,
-	}
-}
-
-func (w *writerCounter) Write(p []byte) (int, error) {
-	n, err := w.w.Write(p)
-	return n, err
-}
-
-func (r *readerCounter) Read(p []byte) (int, error) {
-	n, err := r.r.Read(p)
-	return n, err
 }

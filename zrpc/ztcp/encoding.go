@@ -105,7 +105,6 @@ func (e *messageEncoder) Encode(msg interface{}) error {
 }
 
 func newMessageEncoder(w io.Writer, bufferSize int) *messageEncoder {
-	w = newWriterCounter(w)
 	bw := bufio.NewWriterSize(w, bufferSize)
 
 	ww := bw
@@ -137,7 +136,6 @@ func (d *messageDecoder) Decode(msg interface{}) error {
 
 // TODO no need compress.
 func newMessageDecoder(r io.Reader, bufferSize int) *messageDecoder {
-	r = newReaderCounter(r)
 	br := bufio.NewReaderSize(r, bufferSize)
 
 	rr := br
