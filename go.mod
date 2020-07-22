@@ -18,5 +18,6 @@ require (
 	github.com/templexxx/xhex v0.0.0-20200614015412-aed53437177b
 	github.com/zaibyte/nanozap v0.0.3
 	go.uber.org/goleak v1.0.0
+	golang.org/x/net v0.0.0-20200226121028-0de0cce0169b
 	golang.org/x/tools v0.0.0-20200403190813-44a64ad78b9b // indirect
 )

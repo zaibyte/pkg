@@ -29,9 +29,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zaibyte/pkg/zdigest"
+
 	"github.com/zaibyte/pkg/uid"
 	"github.com/zaibyte/pkg/version"
-	"github.com/zaibyte/pkg/xnet"
 )
 
 // Client is an xhttp client.
@@ -163,7 +164,7 @@ func (c *Client) Request(ctx context.Context, method, url, reqID string, buf []b
 	req.Header.Set(ReqIDHeader, reqID)
 
 	if !c.encrypted {
-		h := crc32.New(xnet.CrcTbl)
+		h := crc32.New(zdigest.CrcTbl)
 		h.Write([]byte(req.URL.RequestURI()))
 		h.Write(buf)
 		req.Header.Set(ChecksumHeader, strconv.Itoa(int(h.Sum32())))

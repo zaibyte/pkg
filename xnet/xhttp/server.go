@@ -28,13 +28,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/zaibyte/pkg/zdigest"
+
+	"github.com/julienschmidt/httprouter"
 	"github.com/zaibyte/pkg/config"
 	"github.com/zaibyte/pkg/uid"
 	"github.com/zaibyte/pkg/version"
 	"github.com/zaibyte/pkg/xlog"
-	"github.com/zaibyte/pkg/xnet"
-
-	"github.com/julienschmidt/httprouter"
 )
 
 // ServerConfig is the config of Server.
@@ -153,7 +153,7 @@ func (s *Server) must(next HandlerFunc) httprouter.Handle {
 				return
 			}
 
-			h := crc32.New(xnet.CrcTbl)
+			h := crc32.New(zdigest.CrcTbl)
 			h.Write([]byte(r.URL.RequestURI()))
 			h.Write(b)
 			if incoming != int(h.Sum32()) {

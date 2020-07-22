@@ -40,27 +40,8 @@ package settings
 var Soft = getDefaultSoftSettings()
 
 type soft struct {
-
-	//
-	// transport
-	//
-	// SendQueueLength is the length of the send queue used to hold messages
-	// exchanged between nodehosts. You may need to increase this value when
-	// you want to host large number nodes per nodehost.
-	SendQueueLength uint64
-
-	// PerConnBufSize is the size of the per connection buffer used for
-	// receiving incoming messages.
-	PerConnectionSendBufSize uint64
-	// PerConnectionRecvBufSize is the size of the recv buffer size.
-	PerConnectionRecvBufSize uint64
 }
 
 func getDefaultSoftSettings() soft {
-	return soft{
-
-		SendQueueLength:          1024 * 2,
-		PerConnectionSendBufSize: 2 * 1024 * 1024,
-		PerConnectionRecvBufSize: 2 * 1024 * 1024,
-	}
+	return soft{}
 }
