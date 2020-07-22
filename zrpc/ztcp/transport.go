@@ -44,6 +44,8 @@ import (
 	"errors"
 	"net"
 	"time"
+
+	"github.com/templexxx/tsc"
 )
 
 var (
@@ -259,7 +261,7 @@ func getConnection(target string, tlsConfig *tls.Config) (net.Conn, error) {
 
 	if tlsConfig != nil {
 		conn = tls.Client(conn, tlsConfig)
-		tt := time.Now().Add(tlsHandshackTimeout)
+		tt := time.Unix(0, tsc.UnixNano()).Add(tlsHandshackTimeout)
 		if err := conn.SetDeadline(tt); err != nil {
 			return nil, err
 		}

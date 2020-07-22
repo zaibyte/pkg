@@ -51,6 +51,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/templexxx/tsc"
 )
 
 func init() {
@@ -1172,7 +1174,7 @@ func TestEchoHandler(t *testing.T) {
 		t.Fatalf("Unexpected value returned: %s. Expected 'abc'", expStr)
 	}
 
-	tt := time.Now()
+	tt := time.Unix(0, tsc.UnixNano())
 	resp, err = c.Call(tt)
 	if err != nil {
 		t.Fatalf("Unexpected error: [%s]", err)

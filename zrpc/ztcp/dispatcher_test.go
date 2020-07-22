@@ -48,6 +48,8 @@ import (
 	"testing"
 	"time"
 	"unsafe"
+
+	"github.com/templexxx/tsc"
 )
 
 func TestDispatcherNewHandlerNoFuncs(t *testing.T) {
@@ -404,7 +406,7 @@ func TestDispatcherEchoGobEncoding(t *testing.T) {
 	d.AddFunc("Echo", func(request *time.Time) *time.Time { return request })
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		// time.Time implements gob encoding
-		tt := time.Now()
+		tt := time.Unix(0, tsc.UnixNano())
 		res, err := dc.Call("Echo", &tt)
 		if err != nil {
 			t.Fatalf("Unexpected error: [%s]", err)
@@ -492,7 +494,7 @@ func TestDispatcherStructArgCall(t *testing.T) {
 		T time.Time
 	}
 
-	tt := time.Now()
+	tt := time.Unix(0, tsc.UnixNano())
 	d := NewDispatcher()
 	d.AddFunc("fooBar", func(request *RequestArg) *ResponseArg {
 		return &ResponseArg{

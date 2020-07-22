@@ -46,6 +46,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/templexxx/tsc"
 )
 
 // Client implements RPC client.
@@ -391,7 +393,7 @@ func (c *Client) callAsync(request interface{}, skipResponse bool, usePool bool)
 	}
 	m.request = request
 	if !skipResponse {
-		m.t = time.Now()
+		m.t = time.Unix(0, tsc.UnixNano())
 		m.done = make(chan struct{})
 		m.Done = m.done
 	}
