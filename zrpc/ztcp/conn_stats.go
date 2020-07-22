@@ -129,36 +129,24 @@ type readerCounter struct {
 	cs *ConnStats
 }
 
-func newWriterCounter(w io.Writer, cs *ConnStats) io.Writer {
+func newWriterCounter(w io.Writer) io.Writer {
 	return &writerCounter{
-		w:  w,
-		cs: cs,
+		w: w,
 	}
 }
 
-func newReaderCounter(r io.Reader, cs *ConnStats) io.Reader {
+func newReaderCounter(r io.Reader) io.Reader {
 	return &readerCounter{
-		r:  r,
-		cs: cs,
+		r: r,
 	}
 }
 
 func (w *writerCounter) Write(p []byte) (int, error) {
 	n, err := w.w.Write(p)
-	w.cs.incWriteCalls()
-	if err != nil {
-		w.cs.incWriteErrors()
-	}
-	w.cs.addBytesWritten(uint64(n))
 	return n, err
 }
 
 func (r *readerCounter) Read(p []byte) (int, error) {
 	n, err := r.r.Read(p)
-	r.cs.incReadCalls()
-	if err != nil {
-		r.cs.incReadErrors()
-	}
-	r.cs.addBytesRead(uint64(n))
 	return n, err
 }

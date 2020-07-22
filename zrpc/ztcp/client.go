@@ -692,11 +692,9 @@ func clientHandler(c *Client) {
 			<-dialChan
 			return
 		case <-dialChan:
-			c.Stats.incDialCalls()
 		}
 
 		if err != nil {
-			c.Stats.incDialErrors()
 			select {
 			case <-c.clientStopChan:
 				return
@@ -782,7 +780,7 @@ func clientWriter(c *Client, w io.Writer, pendingRequests map[uint64]*AsyncResul
 	var err error
 	defer func() { done <- err }()
 
-	e := newMessageEncoder(w, c.SendBufferSize, &c.Stats)
+	e := newMessageEncoder(w, c.SendBufferSize)
 	defer e.Close()
 
 	t := time.NewTimer(c.FlushDelay)
@@ -855,7 +853,6 @@ func clientWriter(c *Client, w io.Writer, pendingRequests map[uint64]*AsyncResul
 
 		wr.Request = m.request
 		if m.done == nil {
-			c.Stats.incRPCCalls()
 			releaseAsyncResult(m)
 		}
 
@@ -878,7 +875,7 @@ func clientReader(c *Client, r io.Reader, pendingRequests map[uint64]*AsyncResul
 		done <- err
 	}()
 
-	d := newMessageDecoder(r, c.RecvBufferSize, &c.Stats)
+	d := newMessageDecoder(r, c.RecvBufferSize)
 	defer d.Close()
 
 	var wr wireResponse
@@ -913,9 +910,6 @@ func clientReader(c *Client, r io.Reader, pendingRequests map[uint64]*AsyncResul
 			}
 			wr.Error = ""
 		}
-
-		c.Stats.incRPCCalls()
-		c.Stats.incRPCTime(uint64(time.Since(m.t).Seconds() * 1000))
 
 		close(m.done)
 	}

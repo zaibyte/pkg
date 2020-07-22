@@ -367,7 +367,7 @@ func serverReader(s *Server, r io.Reader, clientAddr string, responsesChan chan<
 		close(done)
 	}()
 
-	d := newMessageDecoder(r, s.RecvBufferSize, &s.Stats)
+	d := newMessageDecoder(r, s.RecvBufferSize)
 	defer d.Close()
 
 	var wr wireRequest
@@ -453,7 +453,7 @@ func callHandlerWithRecover(logErrorFunc LoggerFunc, handler HandlerFunc, client
 func serverWriter(s *Server, w io.Writer, clientAddr string, responsesChan <-chan *serverMessage, stopChan <-chan struct{}, done chan<- struct{}) {
 	defer func() { close(done) }()
 
-	e := newMessageEncoder(w, s.SendBufferSize, &s.Stats)
+	e := newMessageEncoder(w, s.SendBufferSize)
 	defer e.Close()
 
 	var flushChan <-chan time.Time
