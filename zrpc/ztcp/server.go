@@ -139,12 +139,6 @@ type Server struct {
 	// By default the function set via SetErrorLogger() is used.
 	LogError LoggerFunc
 
-	// Connection statistics.
-	//
-	// The stats doesn't reset automatically. Feel free resetting it
-	// any time you wish.
-	Stats ConnStats
-
 	serverStopChan chan struct{}
 	stopWg         sync.WaitGroup
 }
@@ -244,11 +238,9 @@ func serverHandler(s *Server, workersCh chan struct{}) {
 			<-acceptChan
 			return
 		case <-acceptChan:
-			s.Stats.incAcceptCalls()
 		}
 
 		if err != nil {
-			s.Stats.incAcceptErrors()
 			select {
 			case <-s.serverStopChan:
 				return
@@ -410,13 +402,10 @@ func serveRequest(s *Server, responsesChan chan<- *serverMessage, stopChan <-cha
 	if skipResponse {
 		m.Response = nil
 		m.Error = ""
-		s.Stats.incRPCCalls()
 		serverMessagePool.Put(m)
 	}
 
-	t := time.Now()
 	response, err := callHandlerWithRecover(s.LogError, s.Handler, clientAddr, s.Addr, request)
-	s.Stats.incRPCTime(uint64(time.Since(t).Seconds() * 1000))
 
 	if !skipResponse {
 		m.Response = response
@@ -503,6 +492,5 @@ func serverWriter(s *Server, w io.Writer, clientAddr string, responsesChan <-cha
 		wr.Response = nil
 		wr.Error = ""
 
-		s.Stats.incRPCCalls()
 	}
 }

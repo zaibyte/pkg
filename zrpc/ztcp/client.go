@@ -134,12 +134,6 @@ type Client struct {
 	// By default the function set via SetErrorLogger() is used.
 	LogError LoggerFunc
 
-	// Connection statistics.
-	//
-	// The stats doesn't reset automatically. Feel free resetting it
-	// any time you wish.
-	Stats ConnStats
-
 	pendingRequestsCount uint32
 	requestsChan         chan *AsyncResult
 
