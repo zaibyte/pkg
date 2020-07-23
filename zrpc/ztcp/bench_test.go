@@ -114,7 +114,7 @@ func BenchmarkNetrpcInt(b *testing.B) {
 	c := rpc.NewClient(connC)
 	defer c.Close()
 
-	b.SetParallelism(250)
+	b.SetParallelism(256)
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		var x int
@@ -144,7 +144,7 @@ func BenchmarkNetrpcByteSlice(b *testing.B) {
 	defer c.Close()
 
 	req := []byte("byte slice byte slice aaa bbb ccc foobar")
-	b.SetParallelism(250)
+	b.SetParallelism(256)
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		var resp []byte
@@ -183,7 +183,7 @@ func BenchmarkNetrpcStruct(b *testing.B) {
 			"112321a dsf fds3": "af",
 		},
 	}
-	b.SetParallelism(250)
+	b.SetParallelism(256)
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		var resp BenchStruct
@@ -198,17 +198,17 @@ func BenchmarkNetrpcStruct(b *testing.B) {
 	})
 }
 
-type GorpcService struct{}
+type ZtcpService struct{}
 
-func (s *GorpcService) Int(req int) int                      { return req }
-func (s *GorpcService) ByteSlice(req []byte) []byte          { return req }
-func (s *GorpcService) Struct(req *BenchStruct) *BenchStruct { return req }
+func (s *ZtcpService) Int(req int) int                      { return req }
+func (s *ZtcpService) ByteSlice(req []byte) []byte          { return req }
+func (s *ZtcpService) Struct(req *BenchStruct) *BenchStruct { return req }
 
-func BenchmarkGorpcInt(b *testing.B) {
+func BenchmarkZtcpInt(b *testing.B) {
 	addr := getRandomAddr()
 
 	d := NewDispatcher()
-	d.AddService("GorpcService", &GorpcService{})
+	d.AddService("ZtcpService", &ZtcpService{})
 
 	s := NewTCPServer(addr, d.NewHandlerFunc())
 	if err := s.Start(); err != nil {
@@ -220,15 +220,15 @@ func BenchmarkGorpcInt(b *testing.B) {
 	c.Start()
 	defer c.Stop()
 
-	dc := d.NewServiceClient("GorpcService", c)
+	dc := d.NewServiceClient("ZtcpService", c)
 
-	b.SetParallelism(250)
+	b.SetParallelism(256)
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for i := 0; pb.Next(); i++ {
 			v, err := dc.Call("Int", i)
 			if err != nil {
-				b.Fatalf("Unexpected error when calling GorpcService.Int(%d): %s", i, err)
+				b.Fatalf("Unexpected error when calling ZtcpService.Int(%d): %s", i, err)
 			}
 			x, ok := v.(int)
 			if !ok {
@@ -241,11 +241,11 @@ func BenchmarkGorpcInt(b *testing.B) {
 	})
 }
 
-func BenchmarkGorpcByteSlice(b *testing.B) {
+func BenchmarkZtcpByteSlice(b *testing.B) {
 	addr := getRandomAddr()
 
 	d := NewDispatcher()
-	d.AddService("GorpcService", &GorpcService{})
+	d.AddService("ZtcpService", &ZtcpService{})
 
 	s := NewTCPServer(addr, d.NewHandlerFunc())
 	if err := s.Start(); err != nil {
@@ -257,17 +257,17 @@ func BenchmarkGorpcByteSlice(b *testing.B) {
 	c.Start()
 	defer c.Stop()
 
-	dc := d.NewServiceClient("GorpcService", c)
+	dc := d.NewServiceClient("ZtcpService", c)
 
 	req := make([]byte, 4096)
 	rand.Read(req)
-	b.SetParallelism(250)
+	b.SetParallelism(256)
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for i := 0; pb.Next(); i++ {
 			v, err := dc.Call("ByteSlice", req)
 			if err != nil {
-				b.Fatalf("Unexpected error when calling GorpcService.Int(%q): %s", req, err)
+				b.Fatalf("Unexpected error when calling ZtcpService.Int(%q): %s", req, err)
 			}
 			resp, ok := v.([]byte)
 			if !ok {
@@ -280,11 +280,11 @@ func BenchmarkGorpcByteSlice(b *testing.B) {
 	})
 }
 
-func BenchmarkGorpcStruct(b *testing.B) {
+func BenchmarkZtcpStruct(b *testing.B) {
 	addr := getRandomAddr()
 
 	d := NewDispatcher()
-	d.AddService("GorpcService", &GorpcService{})
+	d.AddService("ZtcpService", &ZtcpService{})
 
 	s := NewTCPServer(addr, d.NewHandlerFunc())
 	if err := s.Start(); err != nil {
@@ -296,7 +296,7 @@ func BenchmarkGorpcStruct(b *testing.B) {
 	c.Start()
 	defer c.Stop()
 
-	dc := d.NewServiceClient("GorpcService", c)
+	dc := d.NewServiceClient("ZtcpService", c)
 
 	req := &BenchStruct{
 		StringSlice: []string{"foo", "bar", "aaa asdfdsfs", "nothwidthstanding"},
@@ -308,13 +308,13 @@ func BenchmarkGorpcStruct(b *testing.B) {
 			"112321a dsf fds3": "af",
 		},
 	}
-	b.SetParallelism(250)
+	b.SetParallelism(256)
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for i := 0; pb.Next(); i++ {
 			v, err := dc.Call("Struct", req)
 			if err != nil {
-				b.Fatalf("Unexpected error when calling GorpcService.Int(%#v): %s", req, err)
+				b.Fatalf("Unexpected error when calling ZtcpService.Int(%#v): %s", req, err)
 			}
 			resp, ok := v.(*BenchStruct)
 			if !ok {
@@ -752,7 +752,7 @@ func benchClientServer(b *testing.B, workers int, c *Client, s *Server, f func(i
 
 func benchClientServerExt(b *testing.B, workers int, c *Client, s *Server, f func(int), waitF func()) {
 	if err := s.Start(); err != nil {
-		b.Fatalf("Cannot start gorpc server: [%s]", err)
+		b.Fatalf("Cannot start ztcp server: [%s]", err)
 	}
 	c.Start()
 
@@ -787,7 +787,7 @@ func benchClientServerExt(b *testing.B, workers int, c *Client, s *Server, f fun
 
 func createEchoServerAndClient(b *testing.B, disableCompression bool, workers int, isUnixTransport bool) (s *Server, c *Client) {
 	if isUnixTransport {
-		addr := "./gorpc-bench.sock"
+		addr := "./ztcp-bench.sock"
 		s = NewTCPServer(addr, echoHandler)
 		c = NewTCPClient(addr)
 	} else {

@@ -83,12 +83,12 @@ const (
 // transport wrapping.
 type OnConnectFunc func(remoteAddr string, rwc io.ReadWriteCloser) (net.Conn, error)
 
-// LoggerFunc is an error logging function to pass to gorpc.SetErrorLogger().
+// LoggerFunc is an error logging function to pass to ztcp.SetErrorLogger().
 type LoggerFunc func(format string, args ...interface{})
 
 var errorLogger = LoggerFunc(log.Printf)
 
-// SetErrorLogger sets the given error logger to use in gorpc.
+// SetErrorLogger sets the given error logger to use in ztcp.
 //
 // By default log.Printf is used for error logging.
 func SetErrorLogger(f LoggerFunc) {
@@ -98,7 +98,7 @@ func SetErrorLogger(f LoggerFunc) {
 // NilErrorLogger discards all error messages.
 //
 // Pass NilErrorLogger to SetErrorLogger() in order to suppress error log generated
-// by gorpc.
+// by ztcp.
 func NilErrorLogger(format string, args ...interface{}) {}
 
 func logPanic(format string, args ...interface{}) {

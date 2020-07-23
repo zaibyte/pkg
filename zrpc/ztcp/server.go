@@ -147,11 +147,11 @@ func (s *Server) Start() error {
 		s.LogError = errorLogger
 	}
 	if s.Handler == nil {
-		panic("gorpc.Server: Server.Handler cannot be nil")
+		panic("ztcp.Server: Server.Handler cannot be nil")
 	}
 
 	if s.serverStopChan != nil {
-		panic("gorpc.Server: server is already running. Stop it before starting it again")
+		panic("ztcp.Server: server is already running. Stop it before starting it again")
 	}
 	s.serverStopChan = make(chan struct{})
 
@@ -175,7 +175,7 @@ func (s *Server) Start() error {
 		s.Listener = &defaultListener{}
 	}
 	if err := s.Listener.Init(s.Addr); err != nil {
-		err = fmt.Errorf("gorpc.Server: [%s]. Cannot listen to: [%s]", s.Addr, err)
+		err = fmt.Errorf("ztcp.Server: [%s]. Cannot listen to: [%s]", s.Addr, err)
 		s.LogError("%s", err)
 		return err
 	}
@@ -189,7 +189,7 @@ func (s *Server) Start() error {
 // Stop stops rpc server. Stopped server can be started again.
 func (s *Server) Stop() {
 	if s.serverStopChan == nil {
-		panic("gorpc.Server: server must be started before stopping it")
+		panic("ztcp.Server: server must be started before stopping it")
 	}
 	close(s.serverStopChan)
 	s.stopWg.Wait()
@@ -218,7 +218,7 @@ func serverHandler(s *Server, workersCh chan struct{}) {
 		go func() {
 			if conn, clientAddr, err = s.Listener.Accept(); err != nil {
 				if stopping.Load() == nil {
-					s.LogError("gorpc.Server: [%s]. Cannot accept new connection: [%s]", s.Addr, err)
+					s.LogError("ztcp.Server: [%s]. Cannot accept new connection: [%s]", s.Addr, err)
 				}
 			}
 			close(acceptChan)
@@ -353,7 +353,7 @@ func serverReader(s *Server, r io.Reader, clientAddr string, responsesChan chan<
 
 	defer func() {
 		if r := recover(); r != nil {
-			s.LogError("gorpc.Server: [%s]->[%s]. Panic when reading data from client: %v", clientAddr, s.Addr, r)
+			s.LogError("ztcp.Server: [%s]->[%s]. Panic when reading data from client: %v", clientAddr, s.Addr, r)
 		}
 		close(done)
 	}()
@@ -365,7 +365,7 @@ func serverReader(s *Server, r io.Reader, clientAddr string, responsesChan chan<
 	for {
 		if err := d.Decode(&wr); err != nil {
 			if !isClientDisconnect(err) && !isServerStop(stopChan) {
-				s.LogError("gorpc.Server: [%s]->[%s]. Cannot decode request: [%s]", clientAddr, s.Addr, err)
+				s.LogError("ztcp.Server: [%s]->[%s]. Cannot decode request: [%s]", clientAddr, s.Addr, err)
 			}
 			return
 		}
@@ -431,7 +431,7 @@ func callHandlerWithRecover(logErrorFunc LoggerFunc, handler HandlerFunc, client
 			stackTrace := make([]byte, 1<<20)
 			n := runtime.Stack(stackTrace, false)
 			errStr = fmt.Sprintf("Panic occured: %v\nStack trace: %s", x, stackTrace[:n])
-			logErrorFunc("gorpc.Server: [%s]->[%s]. %s", clientAddr, serverAddr, errStr)
+			logErrorFunc("ztcp.Server: [%s]->[%s]. %s", clientAddr, serverAddr, errStr)
 		}
 	}()
 	response = handler(clientAddr, request)
@@ -463,7 +463,7 @@ func serverWriter(s *Server, w io.Writer, clientAddr string, responsesChan <-cha
 			case <-flushChan:
 				if err := e.Flush(); err != nil {
 					if !isServerStop(stopChan) {
-						s.LogError("gorpc.Server: [%s]->[%s]: Cannot flush responses to underlying stream: [%s]", clientAddr, s.Addr, err)
+						s.LogError("ztcp.Server: [%s]->[%s]: Cannot flush responses to underlying stream: [%s]", clientAddr, s.Addr, err)
 					}
 					return
 				}
@@ -485,7 +485,7 @@ func serverWriter(s *Server, w io.Writer, clientAddr string, responsesChan <-cha
 		serverMessagePool.Put(m)
 
 		if err := e.Encode(wr); err != nil {
-			s.LogError("gorpc.Server: [%s]->[%s]. Cannot send response to wire: [%s]", clientAddr, s.Addr, err)
+			s.LogError("ztcp.Server: [%s]->[%s]. Cannot send response to wire: [%s]", clientAddr, s.Addr, err)
 			return
 		}
 		wr.Response = nil

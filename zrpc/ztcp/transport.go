@@ -74,7 +74,7 @@ var (
 //
 // It is expected that the returned conn immediately
 // sends all the data passed via Write() to the server.
-// Otherwise gorpc may hang.
+// Otherwise ztcp may hang.
 // The conn implementation must call Flush() on underlying buffered
 // streams before returning from Write().
 type DialFunc func(addr string) (conn net.Conn, err error)
@@ -91,7 +91,7 @@ type Listener interface {
 	//
 	// It is expected that the returned conn immediately
 	// sends all the data passed via Write() to the client.
-	// Otherwise gorpc may hang.
+	// Otherwise ztcp may hang.
 	// The conn implementation must call Flush() on underlying buffered
 	// streams before returning from Write().
 	Accept() (conn net.Conn, clientAddr string, err error)

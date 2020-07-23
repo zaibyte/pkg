@@ -108,7 +108,7 @@ func (d *Dispatcher) AddFunc(funcName string, f interface{}) {
 	}
 
 	if _, ok := sd.funcMap[funcName]; ok {
-		logPanic("gorpc.Dispatcher: function %s has been already registered", funcName)
+		logPanic("ztcp.Dispatcher: function %s has been already registered", funcName)
 	}
 
 	fd := &funcData{
@@ -116,7 +116,7 @@ func (d *Dispatcher) AddFunc(funcName string, f interface{}) {
 	}
 	var err error
 	if fd.inNum, fd.reqt, err = validateFunc(funcName, fd.fv, false); err != nil {
-		logPanic("gorpc.Dispatcher: %s", err)
+		logPanic("ztcp.Dispatcher: %s", err)
 	}
 	sd.funcMap[funcName] = fd
 }
@@ -130,17 +130,17 @@ func (d *Dispatcher) AddFunc(funcName string, f interface{}) {
 // All public methods must conform requirements described in AddFunc().
 func (d *Dispatcher) AddService(serviceName string, service interface{}) {
 	if serviceName == "" {
-		logPanic("gorpc.Dispatcher: serviceName cannot be empty")
+		logPanic("ztcp.Dispatcher: serviceName cannot be empty")
 	}
 	if _, ok := d.serviceMap[serviceName]; ok {
-		logPanic("gorpc.Dispatcher: service with name=[%s] has been already registered", serviceName)
+		logPanic("ztcp.Dispatcher: service with name=[%s] has been already registered", serviceName)
 	}
 
 	funcMap := make(map[string]*funcData)
 
 	st := reflect.TypeOf(service)
 	if st.Kind() == reflect.Struct {
-		logPanic("gorpc.Dispatcher: service [%s] must be a pointer to struct, i.e. *%s", serviceName, st)
+		logPanic("ztcp.Dispatcher: service [%s] must be a pointer to struct, i.e. *%s", serviceName, st)
 	}
 
 	for i := 0; i < st.NumMethod(); i++ {
@@ -157,13 +157,13 @@ func (d *Dispatcher) AddService(serviceName string, service interface{}) {
 		}
 		var err error
 		if fd.inNum, fd.reqt, err = validateFunc(funcName, fd.fv, true); err != nil {
-			logPanic("gorpc.Dispatcher: %s", err)
+			logPanic("ztcp.Dispatcher: %s", err)
 		}
 		funcMap[mv.Name] = fd
 	}
 
 	if len(funcMap) == 0 {
-		logPanic("gorpc.Dispatcher: the service %s has no methods suitable for rpc", serviceName)
+		logPanic("ztcp.Dispatcher: the service %s has no methods suitable for rpc", serviceName)
 	}
 
 	d.serviceMap[serviceName] = &serviceData{
@@ -348,7 +348,7 @@ func init() {
 // passed to New*Server().
 func (d *Dispatcher) NewHandlerFunc() HandlerFunc {
 	if len(d.serviceMap) == 0 {
-		logPanic("gorpc.Dispatcher: register at least one service before calling HandlerFunc()")
+		logPanic("ztcp.Dispatcher: register at least one service before calling HandlerFunc()")
 	}
 
 	serviceMap := copyServiceMap(d.serviceMap)
@@ -356,7 +356,7 @@ func (d *Dispatcher) NewHandlerFunc() HandlerFunc {
 	return func(clientAddr string, request interface{}) interface{} {
 		req, ok := request.(*dispatcherRequest)
 		if !ok {
-			logPanic("gorpc.Dispatcher: unsupported request type received from the client: %T", request)
+			logPanic("ztcp.Dispatcher: unsupported request type received from the client: %T", request)
 		}
 		return dispatchRequest(serviceMap, clientAddr, req)
 	}
@@ -381,7 +381,7 @@ func dispatchRequest(serviceMap map[string]*serviceData, clientAddr string, req 
 	callName := strings.SplitN(req.Name, ".", 2)
 	if len(callName) != 2 {
 		return &dispatcherResponse{
-			Error: fmt.Sprintf("gorpc.Dispatcher: cannot split call name into service name and method name [%s]", req.Name),
+			Error: fmt.Sprintf("ztcp.Dispatcher: cannot split call name into service name and method name [%s]", req.Name),
 		}
 	}
 
@@ -389,14 +389,14 @@ func dispatchRequest(serviceMap map[string]*serviceData, clientAddr string, req 
 	s, ok := serviceMap[serviceName]
 	if !ok {
 		return &dispatcherResponse{
-			Error: fmt.Sprintf("gorpc.Dispatcher: unknown service name [%s]", serviceName),
+			Error: fmt.Sprintf("ztcp.Dispatcher: unknown service name [%s]", serviceName),
 		}
 	}
 
 	fd, ok := s.funcMap[funcName]
 	if !ok {
 		return &dispatcherResponse{
-			Error: fmt.Sprintf("gorpc.Dispatcher: unknown method [%s]", req.Name),
+			Error: fmt.Sprintf("ztcp.Dispatcher: unknown method [%s]", req.Name),
 		}
 	}
 
@@ -417,7 +417,7 @@ func dispatchRequest(serviceMap map[string]*serviceData, clientAddr string, req 
 			reqt := reflect.TypeOf(req.Request)
 			if reqt != fd.reqt {
 				return &dispatcherResponse{
-					Error: fmt.Sprintf("gorpc.Dispatcher: unexpected request type for method [%s]: %s. Expected %s", req.Name, reqt, fd.reqt),
+					Error: fmt.Sprintf("ztcp.Dispatcher: unexpected request type for method [%s]: %s. Expected %s", req.Name, reqt, fd.reqt),
 				}
 			}
 			inArgs[len(inArgs)-1] = reqv
@@ -489,7 +489,7 @@ type DispatcherClient struct {
 // via AddFunc().
 func (d *Dispatcher) NewFuncClient(c *Client) *DispatcherClient {
 	if len(d.serviceMap) == 0 || d.serviceMap[""] == nil {
-		logPanic("gorpc.Dispatcher: register at least one function with AddFunc() before calling NewFuncClient()")
+		logPanic("ztcp.Dispatcher: register at least one function with AddFunc() before calling NewFuncClient()")
 	}
 
 	return &DispatcherClient{
@@ -503,7 +503,7 @@ func (d *Dispatcher) NewFuncClient(c *Client) *DispatcherClient {
 // It is safe creating multiple service clients over a single underlying client.
 func (d *Dispatcher) NewServiceClient(serviceName string, c *Client) *DispatcherClient {
 	if len(d.serviceMap) == 0 || d.serviceMap[serviceName] == nil {
-		logPanic("gorpc.Dispatcher: service [%s] must be registered with AddService() before calling NewServiceClient()", serviceName)
+		logPanic("ztcp.Dispatcher: service [%s] must be registered with AddService() before calling NewServiceClient()", serviceName)
 	}
 
 	return &DispatcherClient{
@@ -700,7 +700,7 @@ func getResponse(respv interface{}, err error) (interface{}, error) {
 	if !ok {
 		return nil, &ClientError{
 			Server: true,
-			err:    fmt.Errorf("gorpc.DispatcherClient: unexpected response type: %T. Expected *dispatcherResponse", respv),
+			err:    fmt.Errorf("ztcp.DispatcherClient: unexpected response type: %T. Expected *dispatcherResponse", respv),
 		}
 	}
 	if resp.Error != "" {

@@ -147,7 +147,7 @@ func (c *Client) Start() {
 		c.LogError = errorLogger
 	}
 	if c.clientStopChan != nil {
-		panic("gorpc.Client: the given client is already started. Call Client.Stop() before calling Client.Start() again!")
+		panic("ztcp.Client: the given client is already started. Call Client.Stop() before calling Client.Start() again!")
 	}
 
 	if c.PendingRequests <= 0 {
@@ -185,7 +185,7 @@ func (c *Client) Start() {
 // Stop stops rpc client. Stopped client can be started again.
 func (c *Client) Stop() {
 	if c.clientStopChan == nil {
-		panic("gorpc.Client: the client must be started before stopping it")
+		panic("ztcp.Client: the client must be started before stopping it")
 	}
 	close(c.clientStopChan)
 	c.stopWg.Wait()
@@ -282,7 +282,7 @@ func releaseAsyncResult(m *AsyncResult) {
 var asyncResultPool sync.Pool
 
 func getClientTimeoutError(c *Client, timeout time.Duration) error {
-	err := fmt.Errorf("gorpc.Client: [%s]. Cannot obtain response during timeout=%s", c.Addr, timeout)
+	err := fmt.Errorf("ztcp.Client: [%s]. Cannot obtain response during timeout=%s", c.Addr, timeout)
 	c.LogError("%s", err)
 	return &ClientError{
 		Timeout: true,
@@ -431,11 +431,11 @@ func (c *Client) callAsync(request interface{}, skipResponse bool, usePool bool)
 }
 
 func overflowClientError(c *Client) error {
-	err := fmt.Errorf("gorpc.Client: [%s]. Requests' queue with size=%d is overflown. Try increasing Client.PendingRequests value", c.Addr, cap(c.requestsChan))
+	err := fmt.Errorf("ztcp.Client: [%s]. Requests' queue with size=%d is overflown. Try increasing Client.PendingRequests value", c.Addr, cap(c.requestsChan))
 	c.LogError("%s", err)
 	return &ClientError{
 		Overflow: true,
-		err: fmt.Errorf("gorpc.Client: [%s]. Requests' queue with size=%d is overflown. "+
+		err: fmt.Errorf("ztcp.Client: [%s]. Requests' queue with size=%d is overflown. "+
 			"Try increasing Client.PendingRequests value", c.Addr, cap(c.requestsChan)),
 	}
 }
@@ -669,7 +669,7 @@ func clientHandler(c *Client) {
 		go func() {
 			if conn, err = c.Dial(c.Addr); err != nil {
 				if stopping.Load() == nil {
-					c.LogError("gorpc.Client: [%s]. Cannot establish rpc connection: [%s]", c.Addr, err)
+					c.LogError("ztcp.Client: [%s]. Cannot establish rpc connection: [%s]", c.Addr, err)
 				}
 			}
 			close(dialChan)
@@ -716,6 +716,7 @@ func clientHandleConnection(c *Client, conn net.Conn) {
 		conn.Close()
 		return
 	}
+	conn.SetWriteDeadline(time.Time{})
 
 	stopChan := make(chan struct{})
 
@@ -786,7 +787,7 @@ func clientWriter(c *Client, w io.Writer, pendingRequests map[uint64]*AsyncResul
 			case m = <-c.requestsChan:
 			case <-flushChan:
 				if err = e.Flush(); err != nil {
-					err = fmt.Errorf("gorpc.Client: [%s]. Cannot flush requests to underlying stream: [%s]", c.Addr, err)
+					err = fmt.Errorf("ztcp.Client: [%s]. Cannot flush requests to underlying stream: [%s]", c.Addr, err)
 					return
 				}
 				flushChan = nil
@@ -828,7 +829,7 @@ func clientWriter(c *Client, w io.Writer, pendingRequests map[uint64]*AsyncResul
 			atomic.AddUint32(&c.pendingRequestsCount, 1)
 
 			if n > 10*c.PendingRequests {
-				err = fmt.Errorf("gorpc.Client: [%s]. The server didn't return %d responses yet. Closing server connection in order to prevent client resource leaks", c.Addr, n)
+				err = fmt.Errorf("ztcp.Client: [%s]. The server didn't return %d responses yet. Closing server connection in order to prevent client resource leaks", c.Addr, n)
 				return
 			}
 
@@ -841,7 +842,7 @@ func clientWriter(c *Client, w io.Writer, pendingRequests map[uint64]*AsyncResul
 		}
 
 		if err = e.Encode(wr); err != nil {
-			err = fmt.Errorf("gorpc.Client: [%s]. Cannot send request to wire: [%s]", c.Addr, err)
+			err = fmt.Errorf("ztcp.Client: [%s]. Cannot send request to wire: [%s]", c.Addr, err)
 			return
 		}
 		wr.Request = nil
@@ -853,7 +854,7 @@ func clientReader(c *Client, r io.Reader, pendingRequests map[uint64]*AsyncResul
 	defer func() {
 		if r := recover(); r != nil {
 			if err == nil {
-				err = fmt.Errorf("gorpc.Client: [%s]. Panic when reading data from server: %v", c.Addr, r)
+				err = fmt.Errorf("ztcp.Client: [%s]. Panic when reading data from server: %v", c.Addr, r)
 			}
 		}
 		done <- err
@@ -865,7 +866,7 @@ func clientReader(c *Client, r io.Reader, pendingRequests map[uint64]*AsyncResul
 	var wr wireResponse
 	for {
 		if err = d.Decode(&wr); err != nil {
-			err = fmt.Errorf("gorpc.Client: [%s]. Cannot decode response: [%s]", c.Addr, err)
+			err = fmt.Errorf("ztcp.Client: [%s]. Cannot decode response: [%s]", c.Addr, err)
 			return
 		}
 
@@ -877,7 +878,7 @@ func clientReader(c *Client, r io.Reader, pendingRequests map[uint64]*AsyncResul
 		pendingRequestsLock.Unlock()
 
 		if !ok {
-			err = fmt.Errorf("gorpc.Client: [%s]. Unexpected msgID=[%d] obtained from server", c.Addr, wr.ID)
+			err = fmt.Errorf("ztcp.Client: [%s]. Unexpected msgID=[%d] obtained from server", c.Addr, wr.ID)
 			return
 		}
 
@@ -890,7 +891,7 @@ func clientReader(c *Client, r io.Reader, pendingRequests map[uint64]*AsyncResul
 		if wr.Error != "" {
 			m.Error = &ClientError{
 				Server: true,
-				err:    fmt.Errorf("gorpc.Client: [%s]. Server error: [%s]", c.Addr, wr.Error),
+				err:    fmt.Errorf("ztcp.Client: [%s]. Server error: [%s]", c.Addr, wr.Error),
 			}
 			wr.Error = ""
 		}
