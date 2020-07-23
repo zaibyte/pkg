@@ -48,10 +48,13 @@ type requestHeader struct {
 	crc    uint32
 }
 
+// method: [1, 256)
 const (
-	// TCPName is the name of the tcp RPC module.
-	TCPName        = "zai-tcp-transport"
-	objType uint16 = 100
+	maxMethod uint16 = 255 // method must <= maxMethod.
+
+	objPutMethod uint16 = 1
+	objGetMethod uint16 = 2
+	objDelMethod uint16 = 2
 )
 
 func (h *requestHeader) encode(buf []byte) []byte {
@@ -74,6 +77,7 @@ func (h *requestHeader) decode(buf []byte) bool {
 	}
 
 	reqid := binary.BigEndian.Uint64(buf[10:])
+	h.reqid = reqid
 
 	incoming := binary.BigEndian.Uint32(buf[18:])
 	binary.BigEndian.PutUint32(buf[18:], 0)
@@ -84,12 +88,55 @@ func (h *requestHeader) decode(buf []byte) bool {
 	}
 	binary.BigEndian.PutUint32(buf[18:], incoming)
 	method := binary.BigEndian.Uint16(buf)
-	if method != objType {
+	if method == 0 || method > maxMethod {
 		zlog.ErrorID(reqid, "invalid method type")
 		return false
 	}
 	h.method = method
 	h.size = binary.BigEndian.Uint64(buf[2:])
 	h.crc = binary.BigEndian.Uint32(buf[22:])
+	return true
+}
+
+const respHeaderSize = 24
+
+type respHeader struct {
+	size  uint64
+	reqid uint64
+	crc   uint32
+}
+
+func (h *respHeader) encode(buf []byte) []byte {
+	if len(buf) < respHeaderSize {
+		panic("input buf too small")
+	}
+	binary.BigEndian.PutUint64(buf[0:], h.size)
+	binary.BigEndian.PutUint64(buf[8:], h.reqid)
+	binary.BigEndian.PutUint32(buf[16:], 0)
+	binary.BigEndian.PutUint32(buf[20:], h.crc)
+	v := zdigest.Checksum(buf[:respHeaderSize])
+	binary.BigEndian.PutUint32(buf[16:], v)
+	return buf[:respHeaderSize]
+}
+
+func (h *respHeader) decode(buf []byte) bool {
+	if len(buf) < respHeaderSize {
+		return false
+	}
+
+	reqid := binary.BigEndian.Uint64(buf[8:])
+	h.reqid = reqid
+
+	incoming := binary.BigEndian.Uint32(buf[16:])
+	binary.BigEndian.PutUint32(buf[16:], 0)
+	expected := zdigest.Checksum(buf[:respHeaderSize])
+	if incoming != expected {
+		zlog.ErrorID(reqid, "header crc check failed")
+		return false
+	}
+	binary.BigEndian.PutUint32(buf[16:], incoming)
+
+	h.size = binary.BigEndian.Uint64(buf[0:])
+	h.crc = binary.BigEndian.Uint32(buf[20:])
 	return true
 }

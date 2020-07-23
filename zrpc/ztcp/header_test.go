@@ -37,6 +37,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/zaibyte/pkg/uid"
+
 	"github.com/zaibyte/pkg/zlog/xlogtest"
 )
 
@@ -47,9 +49,10 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func TestRequstHeaderCanBeEncodedAndDecoded(t *testing.T) {
+func TestRequestHeaderCanBeEncodedAndDecoded(t *testing.T) {
 	r := requestHeader{
-		method: objType,
+		method: objGetMethod,
+		reqid:  uid.MakeReqID(),
 		size:   1024,
 		crc:    1000,
 	}
@@ -63,13 +66,14 @@ func TestRequstHeaderCanBeEncodedAndDecoded(t *testing.T) {
 		t.Fatalf("decode failed")
 	}
 	if !reflect.DeepEqual(&r, &rr) {
-		t.Errorf("request header changed")
+		t.Fatal("request header changed")
 	}
 }
 
 func TestRequestHeaderCRCIsChecked(t *testing.T) {
 	r := requestHeader{
-		method: objType,
+		method: objGetMethod,
+		reqid:  uid.MakeReqID(),
 		size:   1024,
 		crc:    1000,
 	}
@@ -98,18 +102,74 @@ func TestRequestHeaderCRCIsChecked(t *testing.T) {
 }
 
 func TestInvalidMethodNameIsReported(t *testing.T) {
-	r := requestHeader{
-		method: 1024,
-		size:   1024,
-		crc:    1000,
+
+	methods := []uint16{0, maxMethod + 1}
+
+	for _, method := range methods {
+		r := requestHeader{
+			reqid:  uid.MakeReqID(),
+			method: method,
+			size:   1024,
+			crc:    1000,
+		}
+		buf := make([]byte, requestHeaderSize)
+		result := r.encode(buf)
+		if len(result) != requestHeaderSize {
+			t.Fatalf("unexpected size")
+		}
+		rr := requestHeader{}
+		if rr.decode(result) {
+			t.Fatalf("decode did not report invalid method name")
+		}
 	}
-	buf := make([]byte, requestHeaderSize)
+}
+
+func TestRespHeaderCanBeEncodedAndDecoded(t *testing.T) {
+	r := respHeader{
+		reqid: uid.MakeReqID(),
+		size:  1024,
+		crc:   1000,
+	}
+	buf := make([]byte, respHeaderSize)
 	result := r.encode(buf)
-	if len(result) != requestHeaderSize {
+	if len(result) != respHeaderSize {
 		t.Fatalf("unexpected size")
 	}
-	rr := requestHeader{}
+	rr := respHeader{}
+	if !rr.decode(result) {
+		t.Fatalf("decode failed")
+	}
+	if !reflect.DeepEqual(&r, &rr) {
+		t.Fatal("resp header changed")
+	}
+}
+
+func TestRespHeaderCRCIsChecked(t *testing.T) {
+	r := respHeader{
+		reqid: uid.MakeReqID(),
+		size:  1024,
+		crc:   1000,
+	}
+	buf := make([]byte, respHeaderSize)
+	result := r.encode(buf)
+	if len(result) != respHeaderSize {
+		t.Fatalf("unexpected size")
+	}
+	rr := respHeader{}
+	if !rr.decode(result) {
+		t.Fatalf("decode failed")
+	}
+	crc := binary.BigEndian.Uint32(result[16:])
+	binary.BigEndian.PutUint32(result[16:], crc+1)
 	if rr.decode(result) {
-		t.Fatalf("decode did not report invalid method name")
+		t.Fatalf("crc error not reported")
+	}
+	binary.BigEndian.PutUint32(result[16:], crc)
+	if !rr.decode(result) {
+		t.Fatalf("decode failed")
+	}
+	binary.BigEndian.PutUint64(result[2:], 0)
+	if rr.decode(result) {
+		t.Fatalf("crc error not reported")
 	}
 }
