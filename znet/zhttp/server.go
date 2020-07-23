@@ -94,11 +94,8 @@ func NewServer(cfg *ServerConfig) (s *Server) {
 	return
 }
 
-// HandlerFunc wraps http.HandlerFunc and returns written & status.
-type HandlerFunc func(w http.ResponseWriter, r *http.Request, p httprouter.Params) (written, status int)
-
 // AddHandler helps to add handler to Server.
-func (s *Server) AddHandler(method, path string, handler HandlerFunc, limit int64) {
+func (s *Server) AddHandler(method, path string, handler httprouter.Handle, limit int64) {
 	if limit > 0 {
 		l := newReqLimit(limit)
 		handler = l.withLimit(handler)
@@ -130,7 +127,7 @@ func (s *Server) Close() error {
 }
 
 // must adds the headers which zai must have and check request body.
-func (s *Server) must(next HandlerFunc) httprouter.Handle {
+func (s *Server) must(next httprouter.Handle) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 
 		reqID := r.Header.Get(ReqIDHeader)
@@ -180,17 +177,17 @@ func newReqLimit(limit int64) *reqLimit {
 	}
 }
 
-func (l *reqLimit) withLimit(next HandlerFunc) HandlerFunc {
+func (l *reqLimit) withLimit(next httprouter.Handle) httprouter.Handle {
 
-	return func(w http.ResponseWriter, r *http.Request, p httprouter.Params) (written, status int) {
+	return func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 
 		if atomic.AddInt64(&l.cnt, 1) > l.limit {
 			atomic.AddInt64(&l.cnt, -1)
-			return ReplyCode(w, http.StatusTooManyRequests)
+			ReplyCode(w, http.StatusTooManyRequests)
+		} else {
+			next(w, r, p)
+			atomic.AddInt64(&l.cnt, -1)
 		}
-		written, status = next(w, r, p)
-		atomic.AddInt64(&l.cnt, -1)
-		return
 	}
 }
 
@@ -207,7 +204,7 @@ func (s *Server) addDefaultHandler() {
 }
 
 func (s *Server) debug(w http.ResponseWriter, _ *http.Request,
-	p httprouter.Params) (written, status int) {
+	p httprouter.Params) {
 
 	reqIDS := w.Header().Get(ReqIDHeader)
 	reqID := reqIDStrToInt(reqIDS)
@@ -222,19 +219,19 @@ func (s *Server) debug(w http.ResponseWriter, _ *http.Request,
 		zlog.InfoID(reqID, "debug off")
 	}
 
-	return ReplyCode(w, http.StatusOK)
+	ReplyCode(w, http.StatusOK)
 }
 
-func (s *Server) version(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) (written, status int) {
+func (s *Server) version(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 
-	return ReplyJson(w, &version.Info{
+	ReplyJson(w, &version.Info{
 		Version:   version.ReleaseVersion,
 		GitHash:   version.GitHash,
 		GitBranch: version.GitBranch,
 	}, http.StatusOK, s.cfg.Encrypted)
 }
 
-// Reply replies HTTP request, return the written bytes length & status code.
+// Reply replies HTTP request.
 //
 // Usage:
 // As return function in http Handler.
@@ -244,13 +241,13 @@ func (s *Server) version(w http.ResponseWriter, _ *http.Request, _ httprouter.Pa
 // If any wrong in the write resp process, it would be written into the log.
 
 // ReplyCode replies to the request with the empty message and HTTP code.
-func ReplyCode(w http.ResponseWriter, statusCode int) (written, status int) {
+func ReplyCode(w http.ResponseWriter, statusCode int) {
 
-	return ReplyJson(w, nil, statusCode, true) // Only reply code, no need check resp.body.
+	ReplyJson(w, nil, statusCode, true) // Only reply code, no need check resp.body.
 }
 
 // ReplyError replies to the request with the specified error message and HTTP code.
-func ReplyError(w http.ResponseWriter, msg string, statusCode int) (written, status int) {
+func ReplyError(w http.ResponseWriter, msg string, statusCode int) {
 
 	if msg == "" {
 		msg = http.StatusText(statusCode)
@@ -259,15 +256,14 @@ func ReplyError(w http.ResponseWriter, msg string, statusCode int) (written, sta
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(statusCode)
 
-	written, err := fmt.Fprintln(w, msg)
+	_, err := fmt.Fprintln(w, msg)
 	if err != nil {
 		zlog.ErrorID(reqIDStrToInt(w.Header().Get(ReqIDHeader)), makeReplyErrMsg(err))
 	}
-	return written, statusCode
 }
 
 // ReplyJson replies to the request with specified ret(in JSON) and HTTP code.
-func ReplyJson(w http.ResponseWriter, ret interface{}, statusCode int, encrypted bool) (written, status int) {
+func ReplyJson(w http.ResponseWriter, ret interface{}, statusCode int, encrypted bool) {
 
 	var msg []byte
 	if ret != nil {
@@ -281,11 +277,10 @@ func ReplyJson(w http.ResponseWriter, ret interface{}, statusCode int, encrypted
 		w.Header().Set(ChecksumHeader, strconv.FormatInt(int64(zdigest.Checksum(msg)), 10))
 	}
 
-	written, err := w.Write(msg)
+	_, err := w.Write(msg)
 	if err != nil {
 		zlog.ErrorID(reqIDStrToInt(w.Header().Get(ReqIDHeader)), makeReplyErrMsg(err))
 	}
-	return written, statusCode
 }
 
 func makeReplyErrMsg(err error) string {
