@@ -56,7 +56,7 @@ var (
 	poisonNumber        = [2]byte{0x0, 0x0}
 	payloadBufferSize   = 4 * 1024 * 1024
 	dialTimeout         = 5 * time.Second
-	tlsHandshackTimeout = 10 * time.Second
+	tlsHandshakeTimeout = 10 * time.Second
 	magicNumberDuration = 1 * time.Second
 	headerDuration      = 2 * time.Second
 	readDuration        = 5 * time.Second
@@ -172,6 +172,20 @@ func (ln *netListener) Close() error {
 	return ln.L.Close()
 }
 
+// NewTCPServer creates a server listening for TLS (if has) or TCP connections
+// on the given addr and processing incoming requests
+// with the given HandlerFunc.
+//
+// The returned server must be started after optional settings' adjustment.
+//
+// The corresponding client must be created with NewClient().
+func NewServer(addr string, handler HandlerFunc, cfg *tls.Config) *Server {
+	if cfg == nil {
+		return NewTCPServer(addr, handler)
+	}
+	return NewTLSServer(addr, handler, cfg)
+}
+
 // NewTCPServer creates a server listening for TCP connections
 // on the given addr and processing incoming requests
 // with the given HandlerFunc.
@@ -205,6 +219,19 @@ func NewTLSServer(addr string, handler HandlerFunc, cfg *tls.Config) *Server {
 			},
 		},
 	}
+}
+
+// NewClient creates a client connecting over TLS (if has) or TCP
+// to the server listening to the given addr.
+//
+// The returned client must be started after optional settings' adjustment.
+//
+// The corresponding server must be created with NewServer().
+func NewClient(addr string, cfg *tls.Config) *Client {
+	if cfg == nil {
+		return NewTCPClient(addr)
+	}
+	return NewTLSClient(addr, cfg)
 }
 
 // NewTCPClient creates a client connecting over TCP to the server
@@ -261,7 +288,7 @@ func getConnection(target string, tlsConfig *tls.Config) (net.Conn, error) {
 
 	if tlsConfig != nil {
 		conn = tls.Client(conn, tlsConfig)
-		tt := time.Unix(0, tsc.UnixNano()).Add(tlsHandshackTimeout)
+		tt := time.Unix(0, tsc.UnixNano()).Add(tlsHandshakeTimeout)
 		if err := conn.SetDeadline(tt); err != nil {
 			return nil, err
 		}

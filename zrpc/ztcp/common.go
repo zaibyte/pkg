@@ -54,7 +54,7 @@ const (
 	DefaultConcurrency = 8 * 1024
 
 	// DefaultRequestTimeout is the default timeout for client request.
-	DefaultRequestTimeout = 20 * time.Second
+	DefaultRequestTimeout = 5 * time.Second
 
 	// DefaultPendingMessages is the default number of pending messages
 	// handled by Client and Server.

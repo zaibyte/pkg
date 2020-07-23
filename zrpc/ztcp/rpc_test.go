@@ -617,23 +617,6 @@ func newOnConnectFunc(t *testing.T) OnConnectFunc {
 	}
 }
 
-func TestOnConnect(t *testing.T) {
-	addr := getRandomAddr()
-	s := NewTCPServer(addr, echoHandler)
-	s.OnConnect = newOnConnectFunc(t)
-	if err := s.Start(); err != nil {
-		t.Fatalf("Server.Start() failed: [%s]", err)
-	}
-	defer s.Stop()
-
-	c := NewTCPClient(addr)
-	c.OnConnect = newOnConnectFunc(t)
-	c.Start()
-	defer c.Stop()
-
-	testIntClient(t, c)
-}
-
 func TestConcurrency(t *testing.T) {
 	addr := getRandomAddr()
 	s := NewTCPServer(addr, func(clientAddr string, request interface{}) interface{} {

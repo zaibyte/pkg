@@ -111,14 +111,6 @@ type Server struct {
 	// Default is DefaultBufferSize.
 	RecvBufferSize int
 
-	// OnConnect is called whenever connection from client is accepted.
-	// The callback can be used for authentication/authorization/encryption
-	// and/or for custom transport wrapping.
-	//
-	// See also Listener, which can be used for sophisticated transport
-	// implementation.
-	OnConnect OnConnectFunc
-
 	// The server obtains new client connections via Listener.Accept().
 	//
 	// Override the listener if you want custom underlying transport
@@ -256,16 +248,6 @@ func serverHandler(s *Server, workersCh chan struct{}) {
 
 func serverHandleConnection(s *Server, conn net.Conn, clientAddr string, workersCh chan struct{}) {
 	defer s.stopWg.Done()
-
-	if s.OnConnect != nil {
-		newConn, err := s.OnConnect(clientAddr, conn)
-		if err != nil {
-			s.LogError("gorpc.Server: [%s]->[%s]. OnConnect error: [%s]", clientAddr, s.Addr, err)
-			conn.Close()
-			return
-		}
-		conn = newConn
-	}
 
 	var err error
 	var stopping atomic.Value
