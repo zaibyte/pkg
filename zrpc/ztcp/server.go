@@ -40,6 +40,7 @@
 package ztcp
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net"
@@ -252,15 +253,17 @@ func serverHandleConnection(s *Server, conn net.Conn, clientAddr string, workers
 	var err error
 	var stopping atomic.Value
 
-	zChan := make(chan bool, 1)
+	zChan := make(chan struct{}, 1)
 	go func() {
-		var buf [1]byte
-		if _, err = conn.Read(buf[:]); err != nil {
+		var buf [2]byte
+		err = readMagicNumber(conn, buf[:])
+		if err != nil {
 			if stopping.Load() == nil {
-				s.LogError("gorpc.Server: [%s]->[%s]. Error when reading handshake from client: [%s]", clientAddr, s.Addr, err)
+				s.LogError("ztcp.Server: [%s]->[%s]. Error when reading magic number from client: [%s]", clientAddr, s.Addr, err)
 			}
 		}
-		zChan <- (buf[0] != 0)
+
+		zChan <- struct{}{}
 	}()
 	select {
 	case <-zChan:
@@ -272,8 +275,8 @@ func serverHandleConnection(s *Server, conn net.Conn, clientAddr string, workers
 		stopping.Store(true)
 		conn.Close()
 		return
-	case <-time.After(10 * time.Second):
-		s.LogError("gorpc.Server: [%s]->[%s]. Cannot obtain handshake from client during 10s", clientAddr, s.Addr)
+	case <-time.After(2 * time.Second):
+		s.LogError("ztcp.Server: [%s]->[%s]. Cannot obtain reading magic number from client during 2s", clientAddr, s.Addr)
 		conn.Close()
 		return
 	}
@@ -302,6 +305,20 @@ func serverHandleConnection(s *Server, conn net.Conn, clientAddr string, workers
 		<-readerDone
 		<-writerDone
 	}
+}
+
+func readMagicNumber(conn net.Conn, magicNum []byte) error {
+
+	if _, err := io.ReadFull(conn, magicNum); err != nil {
+		return err
+	}
+	if bytes.Equal(magicNum, poisonNumber[:]) {
+		return errPoisonReceived
+	}
+	if !bytes.Equal(magicNum, magicNumber[:]) {
+		return ErrBadMessage
+	}
+	return nil
 }
 
 type serverMessage struct {

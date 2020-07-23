@@ -42,6 +42,7 @@ package ztcp
 import (
 	"fmt"
 	"io"
+	"net"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -659,7 +660,7 @@ var ErrCanceled = &ClientError{
 func clientHandler(c *Client) {
 	defer c.stopWg.Done()
 
-	var conn io.ReadWriteCloser
+	var conn net.Conn
 	var err error
 	var stopping atomic.Value
 
@@ -701,13 +702,17 @@ func clientHandler(c *Client) {
 	}
 }
 
-func clientHandleConnection(c *Client, conn io.ReadWriteCloser) {
+func clientHandleConnection(c *Client, conn net.Conn) {
 
-	var buf [1]byte
-
-	_, err := conn.Write(buf[:])
-	if err != nil {
-		c.LogError("gorpc.Client: [%s]. Error when writing handshake to server: [%s]", c.Addr, err)
+	var err error
+	tt := time.Unix(0, tsc.UnixNano()).Add(magicNumberDuration)
+	if err = conn.SetWriteDeadline(tt); err != nil {
+		c.LogError("ztcp.Client: [%s]. Error when setting magic number deadline: [%s]", c.Addr, err)
+		conn.Close()
+		return
+	}
+	if _, err = conn.Write(magicNumber[:]); err != nil {
+		c.LogError("ztcp.Client: [%s]. Error when writing magic number to server: [%s]", c.Addr, err)
 		conn.Close()
 		return
 	}
