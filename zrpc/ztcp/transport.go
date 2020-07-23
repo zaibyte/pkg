@@ -111,7 +111,8 @@ func defaultDial(addr string) (conn net.Conn, err error) {
 }
 
 type defaultListener struct {
-	L net.Listener
+	L      net.Listener
+	tlsCfg *tls.Config
 }
 
 func (ln *defaultListener) Init(addr string) (err error) {
@@ -136,39 +137,20 @@ func (ln *defaultListener) Accept() (conn net.Conn, clientAddr string, err error
 		c.Close()
 		return nil, "", err
 	}
+	if ln.tlsCfg != nil {
+		c = tls.Server(c, ln.tlsCfg)
+		tt := time.Unix(0, tsc.UnixNano()).Add(3 * time.Second)
+		if err := c.SetDeadline(tt); err != nil {
+			return nil, "", err
+		}
+		if err := c.(*tls.Conn).Handshake(); err != nil {
+			return nil, "", err
+		}
+	}
 	return c, c.RemoteAddr().String(), nil
 }
 
 func (ln *defaultListener) Close() error {
-	return ln.L.Close()
-}
-
-type netListener struct {
-	F func(addr string) (net.Listener, error)
-	L net.Listener
-}
-
-func (ln *netListener) Init(addr string) (err error) {
-	ln.L, err = ln.F(addr)
-	return
-}
-
-func (ln *netListener) ListenAddr() net.Addr {
-	if ln.L != nil {
-		return ln.L.Addr()
-	}
-	return nil
-}
-
-func (ln *netListener) Accept() (conn net.Conn, clientAddr string, err error) {
-	c, err := ln.L.Accept()
-	if err != nil {
-		return nil, "", err
-	}
-	return c, c.RemoteAddr().String(), nil
-}
-
-func (ln *netListener) Close() error {
 	return ln.L.Close()
 }
 
@@ -213,10 +195,8 @@ func NewTLSServer(addr string, handler HandlerFunc, cfg *tls.Config) *Server {
 	return &Server{
 		Addr:    addr,
 		Handler: handler,
-		Listener: &netListener{
-			F: func(addr string) (net.Listener, error) {
-				return tls.Listen("tcp", addr, cfg)
-			},
+		Listener: &defaultListener{
+			tlsCfg: cfg,
 		},
 	}
 }
