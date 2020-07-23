@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// package xhttp provides http implementation for Zai.
+// package zhttp provides http implementation for Zai.
 // Zai uses HTTP/1.1 for handling management requests,
 // these requests are not performance sensitive,
 // HTTP/1.1 is a good choice to make things easier.
@@ -22,7 +22,7 @@
 // 2. Add E2E checksum.
 // 3. Add private headers.
 // 4. Wrap some basic methods/functions, make it easier to use.
-package xhttp
+package zhttp
 
 import "strconv"
 

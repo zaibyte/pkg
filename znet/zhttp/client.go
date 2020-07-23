@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package xhttp
+package zhttp
 
 import (
 	"bytes"
@@ -36,7 +36,7 @@ import (
 	"github.com/zaibyte/pkg/version"
 )
 
-// Client is an xhttp client.
+// Client is an zhttp client.
 type Client struct {
 	c         *http.Client
 	encrypted bool
