@@ -14,6 +14,12 @@
 
 package xhttp
 
+import "errors"
+
 var (
 	ErrHeaderCheckFailedMsg = "header check failed"
+)
+
+var (
+	ErrHeaderCheckFailed = errors.New(ErrHeaderCheckFailedMsg)
 )

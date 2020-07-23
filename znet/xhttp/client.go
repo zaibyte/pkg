@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"hash/crc32"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -175,6 +176,28 @@ func (c *Client) Request(ctx context.Context, method, url, reqID string, buf []b
 		return
 	}
 
+	if !c.encrypted {
+		c := resp.Header.Get(ChecksumHeader)
+		if c != "" {
+			incoming, err := strconv.Atoi(c)
+			if err != nil {
+				io.Copy(ioutil.Discard, resp.Body)
+				return resp, ErrHeaderCheckFailed
+			}
+
+			b, err2 := ioutil.ReadAll(resp.Body)
+			if err2 != nil {
+				return resp, err2
+			}
+
+			if incoming != int(zdigest.Checksum(b)) {
+				return resp, ErrHeaderCheckFailed
+			}
+
+			resp.Body = ioutil.NopCloser(bytes.NewReader(b))
+		}
+	}
+
 	if resp.StatusCode/100 >= 4 {
 
 		err = errors.New(http.StatusText(resp.StatusCode))
@@ -187,8 +210,10 @@ func (c *Client) Request(ctx context.Context, method, url, reqID string, buf []b
 			// See ReplyError for more details.
 			err = errors.New(string(buf[:len(buf)-1])) // drop \n
 		}
+		io.Copy(ioutil.Discard, resp.Body)
 		return
 	}
+
 	return
 }
 

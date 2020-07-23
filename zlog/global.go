@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package xlog
+package zlog
 
 var (
 	_global *ErrorLogger

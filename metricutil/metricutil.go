@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/zaibyte/pkg/typeutil"
-	"github.com/zaibyte/pkg/xlog"
+	"github.com/zaibyte/pkg/zlog"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/push"
@@ -46,7 +46,7 @@ const (
 func Push(cfg *Config, boxID uint32, instanceID string) {
 
 	if len(cfg.PushAddress) == 0 || cfg.PushJob == "" {
-		xlog.Info("disable Prometheus push client")
+		zlog.Info("disable Prometheus push client")
 		return
 	}
 
@@ -62,7 +62,7 @@ func Push(cfg *Config, boxID uint32, instanceID string) {
 		cfg.PushInterval.Duration = defaultPushInterval
 	}
 
-	xlog.Info("start Prometheus push client")
+	zlog.Info("start Prometheus push client")
 
 	go prometheusPushClient(cfg, boxID, instanceID)
 }
@@ -77,7 +77,7 @@ func prometheusPushClient(cfg *Config, boxID uint32, instanceID string) {
 	for {
 		err := pusher.Push()
 		if err != nil {
-			xlog.Error(fmt.Sprintf("could not push metrics to Prometheus Pushgateway: %s", err.Error()))
+			zlog.Error(fmt.Sprintf("could not push metrics to Prometheus Pushgateway: %s", err.Error()))
 		}
 
 		time.Sleep(cfg.PushInterval.Duration)

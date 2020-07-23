@@ -37,7 +37,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/zaibyte/pkg/xlog/xlogtest"
+	"github.com/zaibyte/pkg/zlog/xlogtest"
 )
 
 func TestMain(m *testing.M) {

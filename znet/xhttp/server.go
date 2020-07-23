@@ -34,7 +34,7 @@ import (
 	"github.com/zaibyte/pkg/config"
 	"github.com/zaibyte/pkg/uid"
 	"github.com/zaibyte/pkg/version"
-	"github.com/zaibyte/pkg/xlog"
+	"github.com/zaibyte/pkg/zlog"
 )
 
 // ServerConfig is the config of Server.
@@ -84,7 +84,7 @@ func NewServer(cfg *ServerConfig) (s *Server) {
 
 	s.srv = &http.Server{
 		Addr:     cfg.Address,
-		ErrorLog: log.New(xlog.GetLogger(), "", 0),
+		ErrorLog: log.New(zlog.GetLogger(), "", 0),
 		Handler:  s.router,
 
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
@@ -215,11 +215,11 @@ func (s *Server) debug(w http.ResponseWriter, _ *http.Request,
 	cmd := p.ByName("cmd")
 	switch cmd {
 	case "on":
-		_ = xlog.SetLevel("debug")
-		xlog.DebugID(reqID, "debug on")
+		_ = zlog.SetLevel("debug")
+		zlog.DebugID(reqID, "debug on")
 	default:
-		_ = xlog.SetLevel("info")
-		xlog.InfoID(reqID, "debug off")
+		_ = zlog.SetLevel("info")
+		zlog.InfoID(reqID, "debug off")
 	}
 
 	return ReplyCode(w, http.StatusOK)
@@ -231,23 +231,22 @@ func (s *Server) version(w http.ResponseWriter, _ *http.Request, _ httprouter.Pa
 		Version:   version.ReleaseVersion,
 		GitHash:   version.GitHash,
 		GitBranch: version.GitBranch,
-	}, http.StatusOK)
+	}, http.StatusOK, s.cfg.Encrypted)
 }
 
-// Reply replies HTTP request, return the written bytes length & status code,
-// we need the status code for access log.
+// Reply replies HTTP request, return the written bytes length & status code.
 //
 // Usage:
 // As return function in http Handler.
 //
 // Warn:
-// Be sure you have called xlog.InitGlobalLogger.
+// Be sure you have called zlog.InitGlobalLogger.
 // If any wrong in the write resp process, it would be written into the log.
 
 // ReplyCode replies to the request with the empty message and HTTP code.
 func ReplyCode(w http.ResponseWriter, statusCode int) (written, status int) {
 
-	return ReplyJson(w, nil, statusCode)
+	return ReplyJson(w, nil, statusCode, true) // Only reply code, no need check resp.body.
 }
 
 // ReplyError replies to the request with the specified error message and HTTP code.
@@ -259,15 +258,16 @@ func ReplyError(w http.ResponseWriter, msg string, statusCode int) (written, sta
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(statusCode)
+
 	written, err := fmt.Fprintln(w, msg)
 	if err != nil {
-		xlog.ErrorID(reqIDStrToInt(w.Header().Get(ReqIDHeader)), makeReplyErrMsg(err))
+		zlog.ErrorID(reqIDStrToInt(w.Header().Get(ReqIDHeader)), makeReplyErrMsg(err))
 	}
 	return written, statusCode
 }
 
 // ReplyJson replies to the request with specified ret(in JSON) and HTTP code.
-func ReplyJson(w http.ResponseWriter, ret interface{}, statusCode int) (written, status int) {
+func ReplyJson(w http.ResponseWriter, ret interface{}, statusCode int, encrypted bool) (written, status int) {
 
 	var msg []byte
 	if ret != nil {
@@ -276,9 +276,14 @@ func ReplyJson(w http.ResponseWriter, ret interface{}, statusCode int) (written,
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
 	w.Header().Set("Content-Length", strconv.Itoa(len(msg)))
 	w.WriteHeader(statusCode)
+
+	if !encrypted {
+		w.Header().Set(ChecksumHeader, strconv.FormatInt(int64(zdigest.Checksum(msg)), 10))
+	}
+
 	written, err := w.Write(msg)
 	if err != nil {
-		xlog.ErrorID(reqIDStrToInt(w.Header().Get(ReqIDHeader)), makeReplyErrMsg(err))
+		zlog.ErrorID(reqIDStrToInt(w.Header().Get(ReqIDHeader)), makeReplyErrMsg(err))
 	}
 	return written, statusCode
 }

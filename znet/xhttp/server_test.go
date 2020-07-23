@@ -23,8 +23,8 @@ import (
 	"testing"
 
 	"github.com/zaibyte/pkg/version"
-	"github.com/zaibyte/pkg/xlog"
-	"github.com/zaibyte/pkg/xlog/xlogtest"
+	"github.com/zaibyte/pkg/zlog"
+	"github.com/zaibyte/pkg/zlog/xlogtest"
 )
 
 var (
@@ -76,7 +76,7 @@ func TestServerDebug(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if xlog.GetLvl() != "debug" {
+	if zlog.GetLvl() != "debug" {
 		t.Fatal("debug on failed")
 	}
 
@@ -85,7 +85,7 @@ func TestServerDebug(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if xlog.GetLvl() != "info" {
+	if zlog.GetLvl() != "info" {
 		t.Fatal("debug off failed")
 	}
 }

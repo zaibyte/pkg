@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-// Package xlog provides logger features.
+// Package zlog provides logger features.
 //
 // All log entries are encoded in JSON,
-package xlog
+package zlog
 
 import (
 	"path/filepath"

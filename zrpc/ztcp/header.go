@@ -36,7 +36,7 @@ import (
 
 	"github.com/zaibyte/pkg/zdigest"
 
-	"github.com/zaibyte/pkg/xlog"
+	"github.com/zaibyte/pkg/zlog"
 )
 
 const requestHeaderSize = 26
@@ -79,13 +79,13 @@ func (h *requestHeader) decode(buf []byte) bool {
 	binary.BigEndian.PutUint32(buf[18:], 0)
 	expected := zdigest.Checksum(buf[:requestHeaderSize])
 	if incoming != expected {
-		xlog.ErrorID(reqid, "header crc check failed")
+		zlog.ErrorID(reqid, "header crc check failed")
 		return false
 	}
 	binary.BigEndian.PutUint32(buf[18:], incoming)
 	method := binary.BigEndian.Uint16(buf)
 	if method != objType {
-		xlog.ErrorID(reqid, "invalid method type")
+		zlog.ErrorID(reqid, "invalid method type")
 		return false
 	}
 	h.method = method

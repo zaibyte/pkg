@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package xlog
+package zlog
 
 import (
 	"github.com/zaibyte/nanozap"
@@ -35,7 +35,7 @@ type RotateConfig struct {
 }
 
 // ErrorLogger is used for recording the common application log,
-// xlog also provides global logger for more convenient.
+// zlog also provides global logger for more convenient.
 // In practice, ErrorLogger is just a global logger's container,
 // it won't be used directly.
 type ErrorLogger struct {

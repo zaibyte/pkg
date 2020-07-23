@@ -22,7 +22,7 @@ import (
 
 	"github.com/zaibyte/nanozap"
 	"github.com/zaibyte/nanozap/zapcore"
-	"github.com/zaibyte/pkg/xlog"
+	"github.com/zaibyte/pkg/zlog"
 )
 
 // New init global logger with stdout.
@@ -30,14 +30,14 @@ func New() {
 
 	lvl := nanozap.NewAtomicLevel()
 	lvl.SetLevel(zapcore.InfoLevel)
-	core := zapcore.NewCore(zapcore.NewJSONEncoder(xlog.DefaultEncoderConfig()), &Discarder{}, lvl)
+	core := zapcore.NewCore(zapcore.NewJSONEncoder(zlog.DefaultEncoderConfig()), &Discarder{}, lvl)
 
-	el := &xlog.ErrorLogger{
+	el := &zlog.ErrorLogger{
 		Logger:   nanozap.New(core),
 		Lvl:      lvl,
 		Rotation: nil,
 	}
-	xlog.InitGlobalLogger(el)
+	zlog.InitGlobalLogger(el)
 }
 
 // A Syncer is a spy for the Sync portion of zapcore.WriteSyncer.
@@ -73,5 +73,5 @@ func (d *Discarder) Write(b []byte) (int, error) {
 
 // Close closes logger.
 func Close() {
-	xlog.Close()
+	zlog.Close()
 }
