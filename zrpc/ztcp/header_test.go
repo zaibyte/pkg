@@ -51,6 +51,7 @@ func TestMain(m *testing.M) {
 
 func TestRequestHeaderCanBeEncodedAndDecoded(t *testing.T) {
 	r := requestHeader{
+		msgID:  2048,
 		method: objGetMethod,
 		reqid:  uid.MakeReqID(),
 		size:   1024,
@@ -72,6 +73,7 @@ func TestRequestHeaderCanBeEncodedAndDecoded(t *testing.T) {
 
 func TestRequestHeaderCRCIsChecked(t *testing.T) {
 	r := requestHeader{
+		msgID:  2048,
 		method: objGetMethod,
 		reqid:  uid.MakeReqID(),
 		size:   1024,
@@ -86,12 +88,12 @@ func TestRequestHeaderCRCIsChecked(t *testing.T) {
 	if !rr.decode(result) {
 		t.Fatalf("decode failed")
 	}
-	crc := binary.BigEndian.Uint32(result[18:])
-	binary.BigEndian.PutUint32(result[18:], crc+1)
+	crc := binary.BigEndian.Uint32(result[26:])
+	binary.BigEndian.PutUint32(result[26:], crc+1)
 	if rr.decode(result) {
 		t.Fatalf("crc error not reported")
 	}
-	binary.BigEndian.PutUint32(result[18:], crc)
+	binary.BigEndian.PutUint32(result[26:], crc)
 	if !rr.decode(result) {
 		t.Fatalf("decode failed")
 	}
@@ -107,6 +109,7 @@ func TestInvalidMethodNameIsReported(t *testing.T) {
 
 	for _, method := range methods {
 		r := requestHeader{
+			msgID:  2048,
 			reqid:  uid.MakeReqID(),
 			method: method,
 			size:   1024,
@@ -126,6 +129,7 @@ func TestInvalidMethodNameIsReported(t *testing.T) {
 
 func TestRespHeaderCanBeEncodedAndDecoded(t *testing.T) {
 	r := respHeader{
+		msgID: 2048,
 		reqid: uid.MakeReqID(),
 		size:  1024,
 		crc:   1000,
@@ -140,12 +144,13 @@ func TestRespHeaderCanBeEncodedAndDecoded(t *testing.T) {
 		t.Fatalf("decode failed")
 	}
 	if !reflect.DeepEqual(&r, &rr) {
-		t.Fatal("resp header changed")
+		t.Fatal("resp header changed", r, rr)
 	}
 }
 
 func TestRespHeaderCRCIsChecked(t *testing.T) {
 	r := respHeader{
+		msgID: 2048,
 		reqid: uid.MakeReqID(),
 		size:  1024,
 		crc:   1000,
@@ -159,12 +164,12 @@ func TestRespHeaderCRCIsChecked(t *testing.T) {
 	if !rr.decode(result) {
 		t.Fatalf("decode failed")
 	}
-	crc := binary.BigEndian.Uint32(result[16:])
-	binary.BigEndian.PutUint32(result[16:], crc+1)
+	crc := binary.BigEndian.Uint32(result[24:])
+	binary.BigEndian.PutUint32(result[24:], crc+1)
 	if rr.decode(result) {
 		t.Fatalf("crc error not reported")
 	}
-	binary.BigEndian.PutUint32(result[16:], crc)
+	binary.BigEndian.PutUint32(result[24:], crc)
 	if !rr.decode(result) {
 		t.Fatalf("decode failed")
 	}

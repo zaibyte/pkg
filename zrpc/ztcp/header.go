@@ -39,13 +39,15 @@ import (
 	"github.com/zaibyte/pkg/zlog"
 )
 
-const requestHeaderSize = 26
+const requestHeaderSize = 34
 
 type requestHeader struct {
-	method uint16
-	size   uint64
-	reqid  uint64
-	crc    uint32
+	method uint16 // [0, 2)
+	msgID  uint64 // [2, 10)
+	size   uint64 // [10, 18)
+	reqid  uint64 // [18, 26)
+	hcrc   uint32 // [26, 30), Header CRC.
+	crc    uint32 // [30, 34)
 }
 
 // method: [1, 256)
@@ -54,20 +56,21 @@ const (
 
 	objPutMethod uint16 = 1
 	objGetMethod uint16 = 2
-	objDelMethod uint16 = 2
+	objDelMethod uint16 = 3
 )
 
 func (h *requestHeader) encode(buf []byte) []byte {
 	if len(buf) < requestHeaderSize {
 		panic("input buf too small")
 	}
-	binary.BigEndian.PutUint16(buf, h.method)
-	binary.BigEndian.PutUint64(buf[2:], h.size)
-	binary.BigEndian.PutUint64(buf[10:], h.reqid)
-	binary.BigEndian.PutUint32(buf[18:], 0)
-	binary.BigEndian.PutUint32(buf[22:], h.crc)
+	binary.BigEndian.PutUint16(buf[0:2], h.method)
+	binary.BigEndian.PutUint64(buf[2:10], h.msgID)
+	binary.BigEndian.PutUint64(buf[10:18], h.size)
+	binary.BigEndian.PutUint64(buf[18:26], h.reqid)
+	binary.BigEndian.PutUint32(buf[26:30], 0)
+	binary.BigEndian.PutUint32(buf[30:34], h.crc)
 	v := zdigest.Checksum(buf[:requestHeaderSize])
-	binary.BigEndian.PutUint32(buf[18:], v)
+	binary.BigEndian.PutUint32(buf[26:30], v)
 	return buf[:requestHeaderSize]
 }
 
@@ -76,46 +79,50 @@ func (h *requestHeader) decode(buf []byte) bool {
 		return false
 	}
 
-	reqid := binary.BigEndian.Uint64(buf[10:])
+	reqid := binary.BigEndian.Uint64(buf[18:26])
 	h.reqid = reqid
 
-	incoming := binary.BigEndian.Uint32(buf[18:])
-	binary.BigEndian.PutUint32(buf[18:], 0)
+	incoming := binary.BigEndian.Uint32(buf[26:30])
+	binary.BigEndian.PutUint32(buf[26:30], 0)
 	expected := zdigest.Checksum(buf[:requestHeaderSize])
 	if incoming != expected {
 		zlog.ErrorID(reqid, "header crc check failed")
 		return false
 	}
-	binary.BigEndian.PutUint32(buf[18:], incoming)
+	binary.BigEndian.PutUint32(buf[26:30], incoming)
 	method := binary.BigEndian.Uint16(buf)
 	if method == 0 || method > maxMethod {
 		zlog.ErrorID(reqid, "invalid method type")
 		return false
 	}
 	h.method = method
-	h.size = binary.BigEndian.Uint64(buf[2:])
-	h.crc = binary.BigEndian.Uint32(buf[22:])
+	h.msgID = binary.BigEndian.Uint64(buf[2:10])
+	h.size = binary.BigEndian.Uint64(buf[10:18])
+	h.crc = binary.BigEndian.Uint32(buf[30:34])
 	return true
 }
 
-const respHeaderSize = 24
+const respHeaderSize = 32
 
 type respHeader struct {
-	size  uint64
-	reqid uint64
-	crc   uint32
+	msgID uint64 // [0, 8)
+	size  uint64 // [8, 16)
+	reqid uint64 // [16, 24)
+	hcrc  uint32 // [24, 28), Header CRC.
+	crc   uint32 // [28,32)
 }
 
 func (h *respHeader) encode(buf []byte) []byte {
 	if len(buf) < respHeaderSize {
 		panic("input buf too small")
 	}
-	binary.BigEndian.PutUint64(buf[0:], h.size)
-	binary.BigEndian.PutUint64(buf[8:], h.reqid)
-	binary.BigEndian.PutUint32(buf[16:], 0)
-	binary.BigEndian.PutUint32(buf[20:], h.crc)
+	binary.BigEndian.PutUint64(buf[0:8], h.msgID)
+	binary.BigEndian.PutUint64(buf[8:16], h.size)
+	binary.BigEndian.PutUint64(buf[16:24], h.reqid)
+	binary.BigEndian.PutUint32(buf[24:28], 0)
+	binary.BigEndian.PutUint32(buf[28:32], h.crc)
 	v := zdigest.Checksum(buf[:respHeaderSize])
-	binary.BigEndian.PutUint32(buf[16:], v)
+	binary.BigEndian.PutUint32(buf[24:28], v)
 	return buf[:respHeaderSize]
 }
 
@@ -124,19 +131,20 @@ func (h *respHeader) decode(buf []byte) bool {
 		return false
 	}
 
-	reqid := binary.BigEndian.Uint64(buf[8:])
+	reqid := binary.BigEndian.Uint64(buf[16:24])
 	h.reqid = reqid
 
-	incoming := binary.BigEndian.Uint32(buf[16:])
-	binary.BigEndian.PutUint32(buf[16:], 0)
+	incoming := binary.BigEndian.Uint32(buf[24:28])
+	binary.BigEndian.PutUint32(buf[24:28], 0)
 	expected := zdigest.Checksum(buf[:respHeaderSize])
 	if incoming != expected {
 		zlog.ErrorID(reqid, "header crc check failed")
 		return false
 	}
-	binary.BigEndian.PutUint32(buf[16:], incoming)
+	binary.BigEndian.PutUint32(buf[24:28], incoming)
 
-	h.size = binary.BigEndian.Uint64(buf[0:])
-	h.crc = binary.BigEndian.Uint32(buf[20:])
+	h.msgID = binary.BigEndian.Uint64(buf[0:8])
+	h.size = binary.BigEndian.Uint64(buf[8:16])
+	h.crc = binary.BigEndian.Uint32(buf[28:32])
 	return true
 }
