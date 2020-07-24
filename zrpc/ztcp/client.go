@@ -134,8 +134,6 @@ type Client struct {
 
 	clientStopChan chan struct{}
 	stopWg         sync.WaitGroup
-
-	msgID uint64
 }
 
 const defaultClientConns = 1
@@ -728,17 +726,14 @@ func clientHandleConnection(c *Client, conn net.Conn) {
 
 	stopChan := make(chan struct{})
 
-	//pendingRequests := make(map[uint64]*AsyncResult)
-	//var pendingRequestsLock sync.Mutex
-
-	pendingRequests := new(sync.Map)
-	var pendingRequestsCnt uint32
+	pendingRequests := make(map[uint64]*AsyncResult)
+	var pendingRequestsLock sync.Mutex // Only two goroutine here, map with mutex is faster than sync.Map.
 
 	writerDone := make(chan error, 1)
-	go clientWriter(c, conn, pendingRequests, &pendingRequestsCnt, stopChan, writerDone)
+	go clientWriter(c, conn, pendingRequests, &pendingRequestsLock, stopChan, writerDone)
 
 	readerDone := make(chan error, 1)
-	go clientReader(c, conn, pendingRequests, &pendingRequestsCnt, readerDone)
+	go clientReader(c, conn, pendingRequests, &pendingRequestsLock, readerDone)
 
 	select {
 	case err = <-writerDone:
@@ -764,19 +759,16 @@ func clientHandleConnection(c *Client, conn net.Conn) {
 		}
 	}
 
-	pendingRequests.Range(func(key, value interface{}) bool {
+	for _, m := range pendingRequests {
 		atomic.AddUint32(&c.pendingRequestsCount, ^uint32(0))
-		m := value.(*AsyncResult)
 		m.Error = err
 		if m.done != nil {
 			close(m.done)
 		}
-		return true
-	})
-
+	}
 }
 
-func clientWriter(c *Client, w io.Writer, pendingRequests *sync.Map, pendingRequestsCnt *uint32, stopChan <-chan struct{}, done chan<- error) {
+func clientWriter(c *Client, w io.Writer, pendingRequests map[uint64]*AsyncResult, pendingRequestsLock *sync.Mutex, stopChan <-chan struct{}, done chan<- error) {
 	var err error
 	defer func() { done <- err }()
 
@@ -786,6 +778,7 @@ func clientWriter(c *Client, w io.Writer, pendingRequests *sync.Map, pendingRequ
 	t := time.NewTimer(c.FlushDelay)
 	var flushChan <-chan time.Time
 	var wr wireRequest
+	var msgID uint64 = 1
 	for {
 		var m *AsyncResult
 
@@ -826,12 +819,15 @@ func clientWriter(c *Client, w io.Writer, pendingRequests *sync.Map, pendingRequ
 		if m.done == nil {
 			wr.ID = 0
 		} else {
-			msgID := atomic.AddUint64(&c.msgID, 1)
-			pendingRequests.Store(msgID, m)
-			n := atomic.AddUint32(pendingRequestsCnt, 1)
+			msgID++
+			pendingRequestsLock.Lock()
+			n := len(pendingRequests)
+			pendingRequests[msgID] = m
+			pendingRequestsLock.Unlock()
+
 			atomic.AddUint32(&c.pendingRequestsCount, 1)
 
-			if int(n) > 10*c.PendingRequests {
+			if n > 10*c.PendingRequests {
 				err = fmt.Errorf("ztcp.Client: [%s]. The server didn't return %d responses yet. Closing server connection in order to prevent client resource leaks", c.Addr, n)
 				return
 			}
@@ -852,7 +848,7 @@ func clientWriter(c *Client, w io.Writer, pendingRequests *sync.Map, pendingRequ
 	}
 }
 
-func clientReader(c *Client, r io.Reader, pendingRequests *sync.Map, pendingRequestsCnt *uint32, done chan<- error) {
+func clientReader(c *Client, r io.Reader, pendingRequests map[uint64]*AsyncResult, pendingRequestsLock *sync.Mutex, done chan<- error) {
 	var err error
 	defer func() {
 		if r := recover(); r != nil {
@@ -873,11 +869,12 @@ func clientReader(c *Client, r io.Reader, pendingRequests *sync.Map, pendingRequ
 			return
 		}
 
-		mi, ok := pendingRequests.Load(wr.ID)
+		pendingRequestsLock.Lock()
+		m, ok := pendingRequests[wr.ID]
 		if ok {
-			pendingRequests.Delete(wr.ID)
+			delete(pendingRequests, wr.ID)
 		}
-		m := mi.(*AsyncResult)
+		pendingRequestsLock.Unlock()
 
 		if !ok {
 			err = fmt.Errorf("ztcp.Client: [%s]. Unexpected msgID=[%d] obtained from server", c.Addr, wr.ID)
