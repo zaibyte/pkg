@@ -217,6 +217,7 @@ func BenchmarkZtcpInt(b *testing.B) {
 	defer s.Stop()
 
 	c := NewTCPClient(addr)
+	c.Conns = 4
 	c.Start()
 	defer c.Stop()
 
@@ -254,6 +255,7 @@ func BenchmarkZtcpByteSlice(b *testing.B) {
 	defer s.Stop()
 
 	c := NewTCPClient(addr)
+	c.Conns = 4
 	c.Start()
 	defer c.Stop()
 
