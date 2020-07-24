@@ -384,9 +384,9 @@ func TestServerStuck(t *testing.T) {
 	c.Start()
 	defer c.Stop()
 
-	var res [1500]*AsyncResult
+	res := make([]*AsyncResult, 1500*c.Conns)
 	var err error
-	for j := 0; j < 15; j++ {
+	for j := 0; j < 15*c.Conns; j++ {
 		for i := 0; i < 100; i++ {
 			res[i+100*j], err = c.CallAsync("abc")
 			if err != nil {
@@ -402,7 +402,7 @@ func TestServerStuck(t *testing.T) {
 	timer := acquireTimer(300 * time.Millisecond)
 	defer releaseTimer(timer)
 
-	for i := 0; i < 1500; i++ {
+	for i := range res {
 		r := res[i]
 		select {
 		case <-r.Done:

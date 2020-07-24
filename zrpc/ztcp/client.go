@@ -136,7 +136,7 @@ type Client struct {
 	stopWg         sync.WaitGroup
 }
 
-const defaultClientConns = 1
+const defaultClientConns = 4
 
 // Start starts rpc client. Establishes connection to the server on Client.Addr.
 //
