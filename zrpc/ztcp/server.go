@@ -309,6 +309,11 @@ func serverHandleConnection(s *Server, conn net.Conn, clientAddr string, workers
 
 func readMagicNumber(conn net.Conn, magicNum []byte) error {
 
+	tt := time.Now().Add(magicNumberDuration)
+	if err := conn.SetReadDeadline(tt); err != nil {
+		return err
+	}
+
 	if _, err := io.ReadFull(conn, magicNum); err != nil {
 		return err
 	}
@@ -317,6 +322,9 @@ func readMagicNumber(conn net.Conn, magicNum []byte) error {
 	}
 	if !bytes.Equal(magicNum, magicNumber[:]) {
 		return ErrBadMessage
+	}
+	if err := conn.SetReadDeadline(time.Time{}); err != nil {
+		return err
 	}
 	return nil
 }

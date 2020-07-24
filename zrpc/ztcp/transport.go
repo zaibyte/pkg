@@ -44,8 +44,6 @@ import (
 	"errors"
 	"net"
 	"time"
-
-	"github.com/templexxx/tsc"
 )
 
 var (
@@ -55,8 +53,8 @@ var (
 	magicNumber         = [2]byte{0x7A, 0x61}
 	poisonNumber        = [2]byte{0x0, 0x0}
 	payloadBufferSize   = 4 * 1024 * 1024
-	dialTimeout         = 5 * time.Second
-	tlsHandshakeTimeout = 10 * time.Second
+	dialTimeout         = 2 * time.Second
+	tlsHandshakeTimeout = 3 * time.Second
 	magicNumberDuration = 1 * time.Second
 	headerDuration      = 2 * time.Second
 	readDuration        = 5 * time.Second
@@ -139,11 +137,14 @@ func (ln *defaultListener) Accept() (conn net.Conn, clientAddr string, err error
 	}
 	if ln.tlsCfg != nil {
 		c = tls.Server(c, ln.tlsCfg)
-		tt := time.Unix(0, tsc.UnixNano()).Add(3 * time.Second)
+		tt := time.Now().Add(tlsHandshakeTimeout)
 		if err := c.SetDeadline(tt); err != nil {
 			return nil, "", err
 		}
-		if err := c.(*tls.Conn).Handshake(); err != nil {
+		if err := c.(*tls.Conn).Handshake(); err != nil { // Do handshake manually before ztcp build connection.
+			return nil, "", err
+		}
+		if err := c.SetDeadline(time.Time{}); err != nil { // Reset deadline because conn will be reused.
 			return nil, "", err
 		}
 	}
@@ -268,11 +269,14 @@ func getConnection(target string, tlsConfig *tls.Config) (net.Conn, error) {
 
 	if tlsConfig != nil {
 		conn = tls.Client(conn, tlsConfig)
-		tt := time.Unix(0, tsc.UnixNano()).Add(tlsHandshakeTimeout)
+		tt := time.Now().Add(tlsHandshakeTimeout)
 		if err := conn.SetDeadline(tt); err != nil {
 			return nil, err
 		}
 		if err := conn.(*tls.Conn).Handshake(); err != nil {
+			return nil, err
+		}
+		if err := conn.SetDeadline(time.Time{}); err != nil {
 			return nil, err
 		}
 	}

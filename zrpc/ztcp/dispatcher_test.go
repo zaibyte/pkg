@@ -80,104 +80,104 @@ func TestDispatcherNewServiceClientNoService(t *testing.T) {
 func TestDispatcherAddNonFunc(t *testing.T) {
 	d := NewDispatcher()
 	testPanic(t, func() {
-		d.AddFunc("foobar", 123)
+		d.AddFunction("foobar", 123)
 	})
 }
 
 func TestDispatcherEmptyFuncName(t *testing.T) {
 	d := NewDispatcher()
 	testPanic(t, func() {
-		d.AddFunc("", func() {})
+		d.AddFunction("", func() {})
 	})
 }
 
 func TestDispatcherInvalidFirstArgType(t *testing.T) {
 	d := NewDispatcher()
 	testPanic(t, func() {
-		d.AddFunc("foo", func(clientAddr bool, request string) {})
+		d.AddFunction("foo", func(clientAddr bool, request string) {})
 	})
 }
 
 func TestDispatcherInvalidSecondResType(t *testing.T) {
 	d := NewDispatcher()
 	testPanic(t, func() {
-		d.AddFunc("foo", func() (response int, err float64) { return })
+		d.AddFunction("foo", func() (response int, err float64) { return })
 	})
 }
 
 func TestDispatcherTooManyArgs(t *testing.T) {
 	d := NewDispatcher()
 	testPanic(t, func() {
-		d.AddFunc("foo", func(clientAddr string, foo, bar int) {})
+		d.AddFunction("foo", func(clientAddr string, foo, bar int) {})
 	})
 }
 
 func TestDispatcherTooManyRes(t *testing.T) {
 	d := NewDispatcher()
 	testPanic(t, func() {
-		d.AddFunc("foo", func() (response int, err error, foobar string) { return })
+		d.AddFunction("foo", func() (response int, err error, foobar string) { return })
 	})
 }
 
 func TestDispatcherFuncArg(t *testing.T) {
 	d := NewDispatcher()
 	testPanic(t, func() {
-		d.AddFunc("foo", func(req func()) {})
+		d.AddFunction("foo", func(req func()) {})
 	})
 }
 
 func TestDispatcherChanArg(t *testing.T) {
 	d := NewDispatcher()
 	testPanic(t, func() {
-		d.AddFunc("foo", func(req chan int) {})
+		d.AddFunction("foo", func(req chan int) {})
 	})
 }
 
 func TestDispatcherInterfaceArg(t *testing.T) {
 	d := NewDispatcher()
 	testPanic(t, func() {
-		d.AddFunc("foo", func(req io.Reader) {})
+		d.AddFunction("foo", func(req io.Reader) {})
 	})
 	testPanic(t, func() {
-		d.AddFunc("foo", func(req interface{}) {})
+		d.AddFunction("foo", func(req interface{}) {})
 	})
 }
 
 func TestDispatcherUnsafePointerArg(t *testing.T) {
 	d := NewDispatcher()
 	testPanic(t, func() {
-		d.AddFunc("foo", func(req unsafe.Pointer) {})
+		d.AddFunction("foo", func(req unsafe.Pointer) {})
 	})
 }
 
 func TestDispatcherFuncRes(t *testing.T) {
 	d := NewDispatcher()
 	testPanic(t, func() {
-		d.AddFunc("foo", func() (res func()) { return })
+		d.AddFunction("foo", func() (res func()) { return })
 	})
 }
 
 func TestDispatcherChanRes(t *testing.T) {
 	d := NewDispatcher()
 	testPanic(t, func() {
-		d.AddFunc("foo", func() (res chan int) { return })
+		d.AddFunction("foo", func() (res chan int) { return })
 	})
 }
 
 func TestDispatcherInterfaceRes(t *testing.T) {
 	d := NewDispatcher()
 	testPanic(t, func() {
-		d.AddFunc("foo", func() (res io.Reader) { return })
+		d.AddFunction("foo", func() (res io.Reader) { return })
 	})
 	testPanic(t, func() {
-		d.AddFunc("foo", func() (res interface{}) { return })
+		d.AddFunction("foo", func() (res interface{}) { return })
 	})
 }
 
 func TestDispatcherUnsafePointerRes(t *testing.T) {
 	d := NewDispatcher()
 	testPanic(t, func() {
-		d.AddFunc("foo", func() (res unsafe.Pointer) { return })
+		d.AddFunction("foo", func() (res unsafe.Pointer) { return })
 	})
 }
 
@@ -189,14 +189,14 @@ func TestDispatcherStructWithInvalidFields(t *testing.T) {
 
 	d := NewDispatcher()
 	testPanic(t, func() {
-		d.AddFunc("foo", func(req *InvalidMsg) {})
+		d.AddFunction("foo", func(req *InvalidMsg) {})
 	})
 }
 
 func TestDispatcherInvalidMap(t *testing.T) {
 	d := NewDispatcher()
 	testPanic(t, func() {
-		d.AddFunc("foo", func(req map[string]interface{}) {})
+		d.AddFunction("foo", func(req map[string]interface{}) {})
 	})
 }
 
@@ -208,7 +208,7 @@ func TestDispatcherPassStructArgByValue(t *testing.T) {
 
 	d := NewDispatcher()
 	testPanic(t, func() {
-		d.AddFunc("foo", func(request RequestType) {})
+		d.AddFunction("foo", func(request RequestType) {})
 	})
 }
 
@@ -220,7 +220,7 @@ func TestDispatcherReturnStructResByValue(t *testing.T) {
 
 	d := NewDispatcher()
 	testPanic(t, func() {
-		d.AddFunc("foo", func() (response ResponseType) { return })
+		d.AddFunction("foo", func() (response ResponseType) { return })
 	})
 }
 
@@ -232,7 +232,7 @@ func TestDispatcherPassStructArgNoExportedFields(t *testing.T) {
 
 	d := NewDispatcher()
 	testPanic(t, func() {
-		d.AddFunc("foo", func(req *RequestTypeNoExport) {})
+		d.AddFunction("foo", func(req *RequestTypeNoExport) {})
 	})
 }
 
@@ -244,15 +244,15 @@ func TestDispatcherReturnStructResNoExportedFields(t *testing.T) {
 
 	d := NewDispatcher()
 	testPanic(t, func() {
-		d.AddFunc("foo", func() (resp *ResponseTypeNoExport) { return })
+		d.AddFunction("foo", func() (resp *ResponseTypeNoExport) { return })
 	})
 }
 
 func TestDispatcherMultipleFuncs(t *testing.T) {
 	d := NewDispatcher()
 
-	d.AddFunc("foo", func(a int) int { return a })
-	d.AddFunc("bar", func(b string) string { return b })
+	d.AddFunction("foo", func(a int) int { return a })
+	d.AddFunction("bar", func(b string) string { return b })
 
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		reqa := 4327
@@ -292,7 +292,7 @@ func TestDispatcherStructsWithIdenticalFields(t *testing.T) {
 
 	d := NewDispatcher()
 
-	d.AddFunc("foo", func(request *Struct1) *Struct2 {
+	d.AddFunction("foo", func(request *Struct1) *Struct2 {
 		return &Struct2{
 			A: request.A,
 		}
@@ -318,7 +318,7 @@ func TestDispatcherStructsWithIdenticalFields(t *testing.T) {
 
 func TestDispatcherInvalidArgType(t *testing.T) {
 	d := NewDispatcher()
-	d.AddFunc("foo", func(request string) {})
+	d.AddFunction("foo", func(request string) {})
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		res, err := dc.Call("foo", 1234)
 		if err == nil {
@@ -332,7 +332,7 @@ func TestDispatcherInvalidArgType(t *testing.T) {
 
 func TestDispatcherUnknownFuncCall(t *testing.T) {
 	d := NewDispatcher()
-	d.AddFunc("foo", func(request string) {})
+	d.AddFunction("foo", func(request string) {})
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) { testUnknownFuncs(t, dc) })
 }
 
@@ -385,7 +385,7 @@ func testUnknownFuncs(t *testing.T, dc *DispatcherClient) {
 
 func TestDispatcherEchoFuncCall(t *testing.T) {
 	d := NewDispatcher()
-	d.AddFunc("Echo", func(request string) string { return request })
+	d.AddFunction("Echo", func(request string) string { return request })
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		res, err := dc.Call("Echo", "foobar")
 		if err != nil {
@@ -403,7 +403,7 @@ func TestDispatcherEchoFuncCall(t *testing.T) {
 
 func TestDispatcherEchoGobEncoding(t *testing.T) {
 	d := NewDispatcher()
-	d.AddFunc("Echo", func(request *time.Time) *time.Time { return request })
+	d.AddFunction("Echo", func(request *time.Time) *time.Time { return request })
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		// time.Time implements gob encoding
 		tt := time.Unix(0, tsc.UnixNano())
@@ -423,7 +423,7 @@ func TestDispatcherEchoGobEncoding(t *testing.T) {
 
 func TestDispatcherEchoEmptyStruct(t *testing.T) {
 	d := NewDispatcher()
-	d.AddFunc("Echo", func(request map[string]struct{}) map[string]struct{} { return request })
+	d.AddFunction("Echo", func(request map[string]struct{}) map[string]struct{} { return request })
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		m := map[string]struct{}{
 			"foo": struct{}{},
@@ -462,7 +462,7 @@ func (s *sBinaryEnc) UnmarshalBinary(b []byte) error {
 
 func TestDispatcherEchoBinaryEncoding(t *testing.T) {
 	d := NewDispatcher()
-	d.AddFunc("Echo", func(request *sBinaryEnc) *sBinaryEnc { return request })
+	d.AddFunction("Echo", func(request *sBinaryEnc) *sBinaryEnc { return request })
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		s := &sBinaryEnc{
 			u: 1893243243,
@@ -496,7 +496,7 @@ func TestDispatcherStructArgCall(t *testing.T) {
 
 	tt := time.Unix(0, tsc.UnixNano())
 	d := NewDispatcher()
-	d.AddFunc("fooBar", func(request *RequestArg) *ResponseArg {
+	d.AddFunction("fooBar", func(request *RequestArg) *ResponseArg {
 		return &ResponseArg{
 			C: request.B,
 			D: request.A,
@@ -544,7 +544,7 @@ func TestDispatcherRecursiveStructArg(t *testing.T) {
 	}
 
 	d := NewDispatcher()
-	d.AddFunc("foo", func(req *RecMsg) *RecMsg { return req })
+	d.AddFunction("foo", func(req *RecMsg) *RecMsg { return req })
 
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		reqs := &RecMsg{
@@ -571,7 +571,7 @@ func TestDispatcherMapArgCall(t *testing.T) {
 	d := NewDispatcher()
 
 	type MapT map[string]int
-	d.AddFunc("foo", func(m MapT) MapT { return m })
+	d.AddFunction("foo", func(m MapT) MapT { return m })
 
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		reqm := MapT{
@@ -596,7 +596,7 @@ func TestDispatcherArrayArgCall(t *testing.T) {
 	d := NewDispatcher()
 
 	type ArrT [3]byte
-	d.AddFunc("foo", func(m ArrT) ArrT { return m })
+	d.AddFunction("foo", func(m ArrT) ArrT { return m })
 
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		reqm := ArrT{'a', 'b', 'c'}
@@ -617,7 +617,7 @@ func TestDispatcherArrayArgCall(t *testing.T) {
 func TestDispatcherSliceArgCall(t *testing.T) {
 	d := NewDispatcher()
 
-	d.AddFunc("foo", func(m []byte) []byte { return m })
+	d.AddFunction("foo", func(m []byte) []byte { return m })
 
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		reqm := []byte("foobar")
@@ -639,7 +639,7 @@ func TestDispatcherNoArgNoResCall(t *testing.T) {
 	d := NewDispatcher()
 
 	noArgNoResCalls := 0
-	d.AddFunc("NoArgNoRes", func() { noArgNoResCalls++ })
+	d.AddFunction("NoArgNoRes", func() { noArgNoResCalls++ })
 
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		N := 10
@@ -664,7 +664,7 @@ func TestDispatcherOneArgNoResCall(t *testing.T) {
 
 	serverS := 0
 	clientS := 0
-	d.AddFunc("OneArgNoRes", func(n int) { serverS += n })
+	d.AddFunction("OneArgNoRes", func(n int) { serverS += n })
 
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		for i := 0; i < 10; i++ {
@@ -689,7 +689,7 @@ func TestDispatcherTwoArgNoResCall(t *testing.T) {
 
 	serverS := 0
 	clientS := 0
-	d.AddFunc("TwoArgNoRes", func(clientAddr string, n int) { serverS += n })
+	d.AddFunction("TwoArgNoRes", func(clientAddr string, n int) { serverS += n })
 
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		for i := 0; i < 10; i++ {
@@ -713,7 +713,7 @@ func TestDispatcherNoArgErrorResCall(t *testing.T) {
 	d := NewDispatcher()
 
 	var returnErr error
-	d.AddFunc("NoArgErrorRes", func() error { return returnErr })
+	d.AddFunction("NoArgErrorRes", func() error { return returnErr })
 
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		returnErr = nil
@@ -741,7 +741,7 @@ func TestDispatcherNoArgErrorResCall(t *testing.T) {
 func TestDispatcherOneArgErrorResCall(t *testing.T) {
 	d := NewDispatcher()
 
-	d.AddFunc("OneArgErrorRes", func(r string) error { return fmt.Errorf("%s", r) })
+	d.AddFunction("OneArgErrorRes", func(r string) error { return fmt.Errorf("%s", r) })
 
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		reqs := "foobar"
@@ -761,7 +761,7 @@ func TestDispatcherOneArgErrorResCall(t *testing.T) {
 func TestDispatcherTwoArgErrorResCall(t *testing.T) {
 	d := NewDispatcher()
 
-	d.AddFunc("TwoArgErrorRes", func(clientAddr string, r int) error { return fmt.Errorf("%d", r) })
+	d.AddFunction("TwoArgErrorRes", func(clientAddr string, r int) error { return fmt.Errorf("%d", r) })
 
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		res, err := dc.Call("TwoArgErrorRes", 123)
@@ -780,7 +780,7 @@ func TestDispatcherTwoArgErrorResCall(t *testing.T) {
 func TestDispatcherNoArgOneResCall(t *testing.T) {
 	d := NewDispatcher()
 
-	d.AddFunc("NoArgOneResCall", func() string { return "foobar" })
+	d.AddFunction("NoArgOneResCall", func() string { return "foobar" })
 
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		res, err := dc.Call("NoArgOneResCall", nil)
@@ -800,7 +800,7 @@ func TestDispatcherNoArgOneResCall(t *testing.T) {
 func TestDispatcherOneArgOneResCall(t *testing.T) {
 	d := NewDispatcher()
 
-	d.AddFunc("OneArgOneResCall", func(req int) int { return req })
+	d.AddFunction("OneArgOneResCall", func(req int) int { return req })
 
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		reqs := 42
@@ -821,7 +821,7 @@ func TestDispatcherOneArgOneResCall(t *testing.T) {
 func TestDispatcherOneArgTwoResCall(t *testing.T) {
 	d := NewDispatcher()
 
-	d.AddFunc("OneArgTwoResCall", func(req int) (int, error) { return req, nil })
+	d.AddFunction("OneArgTwoResCall", func(req int) (int, error) { return req, nil })
 
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		reqs := 442
@@ -842,7 +842,7 @@ func TestDispatcherOneArgTwoResCall(t *testing.T) {
 func TestDispatcherTwoArgOneResCall(t *testing.T) {
 	d := NewDispatcher()
 
-	d.AddFunc("TwoArgOneResCall", func(clientAddr string, req int) int { return req })
+	d.AddFunction("TwoArgOneResCall", func(clientAddr string, req int) int { return req })
 
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		reqs := 142
@@ -863,7 +863,7 @@ func TestDispatcherTwoArgOneResCall(t *testing.T) {
 func TestDispatcherTwoArgTwoResCall(t *testing.T) {
 	d := NewDispatcher()
 
-	d.AddFunc("TwoArgTwoResCall", func(clientAddr string, req int) (int, error) { return req, nil })
+	d.AddFunction("TwoArgTwoResCall", func(clientAddr string, req int) (int, error) { return req, nil })
 
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		reqs := 1423
@@ -888,7 +888,7 @@ func TestDispatcherSend(t *testing.T) {
 	ch := make(chan struct{}, N)
 	serverS := uint32(0)
 	clientS := uint32(0)
-	d.AddFunc("Sum", func(n int) {
+	d.AddFunction("Sum", func(n int) {
 		atomic.AddUint32(&serverS, uint32(n))
 		ch <- struct{}{}
 	})
@@ -913,7 +913,7 @@ func TestDispatcherSendWrongFunc(t *testing.T) {
 	d := NewDispatcher()
 
 	ch := make(chan struct{})
-	d.AddFunc("Foo", func(n int) { close(ch) })
+	d.AddFunction("Foo", func(n int) { close(ch) })
 
 	N := 10
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
@@ -932,7 +932,7 @@ func TestDispatcherSendWrongFunc(t *testing.T) {
 func TestDispatcherCallAsync(t *testing.T) {
 	d := NewDispatcher()
 
-	d.AddFunc("aaa", func(x int) int { return x })
+	d.AddFunction("aaa", func(x int) int { return x })
 
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		N := 10
@@ -1128,7 +1128,7 @@ func TestDispatcherBatchSkipResponse(t *testing.T) {
 
 	N := 10
 	ch := make(chan struct{}, N+1)
-	d.AddFunc("Echo", func(x int) int {
+	d.AddFunction("Echo", func(x int) int {
 		ch <- struct{}{}
 		return x
 	})
@@ -1173,8 +1173,8 @@ func TestDispatcherBatchSkipResponse(t *testing.T) {
 func TestDispatcherBatchMultiFunc(t *testing.T) {
 	d := NewDispatcher()
 
-	d.AddFunc("Echo", func(x int) int { return x })
-	d.AddFunc("F42", func() int { return 42 })
+	d.AddFunction("Echo", func(x int) int { return x })
+	d.AddFunction("F42", func() int { return 42 })
 
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		b := dc.NewBatch()
@@ -1267,7 +1267,7 @@ func TestDispatcherFuncAndService(t *testing.T) {
 	d.AddService("foo", service)
 
 	barCalls := 0
-	d.AddFunc("bar", func() { barCalls++ })
+	d.AddFunction("bar", func() { barCalls++ })
 
 	c, s := getClientServer(t, d)
 	defer s.Stop()

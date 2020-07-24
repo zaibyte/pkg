@@ -110,22 +110,22 @@ func ExampleDispatcher_AddFunc() {
 	d := NewDispatcher()
 
 	// Function without arguments and return values
-	d.AddFunc("NoArgsNoRets", func() {})
+	d.AddFunction("NoArgsNoRets", func() {})
 
 	// Function with one argument and no return values
-	d.AddFunc("OneArgNoRets", func(request string) {})
+	d.AddFunction("OneArgNoRets", func(request string) {})
 
 	// Function without arguments and one return value
-	d.AddFunc("NoArgsOneRet", func() int { return 42 })
+	d.AddFunction("NoArgsOneRet", func() int { return 42 })
 
 	// Function with two arguments and no return values.
 	// The first argument must have string type - the server passes
 	// client address in it.
-	d.AddFunc("TwoArgsNoRets", func(clientAddr string, requests []byte) {})
+	d.AddFunction("TwoArgsNoRets", func(clientAddr string, requests []byte) {})
 
 	// Function with one argument and two return values.
 	// The second return value must have error type.
-	d.AddFunc("OneArgTwoRets", func(request []string) ([]string, error) {
+	d.AddFunction("OneArgTwoRets", func(request []string) ([]string, error) {
 		if len(request) == 42 {
 			return nil, errors.New("need 42 strings")
 		}
@@ -138,7 +138,7 @@ func ExampleDispatcherClient_NewBatch() {
 	d := NewDispatcher()
 
 	// Register echo function in the dispatcher.
-	d.AddFunc("Echo", func(x int) int { return x })
+	d.AddFunction("Echo", func(x int) int { return x })
 
 	// Start the server serving all the registered functions above
 	s := NewTCPServer("127.0.0.1:12445", d.NewHandlerFunc())
@@ -185,13 +185,13 @@ func ExampleDispatcher_funcCalls() {
 
 	// Function without args and return values
 	incCalls := 0
-	d.AddFunc("Inc", func() { incCalls++ })
+	d.AddFunction("Inc", func() { incCalls++ })
 
 	// Function without args
-	d.AddFunc("Func42", func() int { return 42 })
+	d.AddFunction("Func42", func() int { return 42 })
 
 	// Echo function for string
-	d.AddFunc("Echo", func(s string) string { return s })
+	d.AddFunction("Echo", func(s string) string { return s })
 
 	// Function with struct arg and return value
 	type ExampleRequestStruct struct {
@@ -202,7 +202,7 @@ func ExampleDispatcher_funcCalls() {
 		Baz    string
 		BarLen int
 	}
-	d.AddFunc("Struct", func(s *ExampleRequestStruct) *ExampleResponseStruct {
+	d.AddFunction("Struct", func(s *ExampleRequestStruct) *ExampleResponseStruct {
 		return &ExampleResponseStruct{
 			Baz:    fmt.Sprintf("foo=%d, bar=%s", s.Foo, s.Bar),
 			BarLen: len(s.Bar),
@@ -210,16 +210,16 @@ func ExampleDispatcher_funcCalls() {
 	})
 
 	// Echo function for map
-	d.AddFunc("Map", func(m map[string]int) map[string]int { return m })
+	d.AddFunction("Map", func(m map[string]int) map[string]int { return m })
 
 	// Echo function for slice
-	d.AddFunc("Slice", func(s []string) []string { return s })
+	d.AddFunction("Slice", func(s []string) []string { return s })
 
 	// Function returning errors
-	d.AddFunc("Error", func() error { return errors.New("error") })
+	d.AddFunction("Error", func() error { return errors.New("error") })
 
 	// Echo function, which may return error if arg is 42
-	d.AddFunc("Error42", func(x int) (int, error) {
+	d.AddFunction("Error42", func(x int) (int, error) {
 		if x == 42 {
 			return 0, errors.New("error42")
 		}
@@ -227,7 +227,7 @@ func ExampleDispatcher_funcCalls() {
 	})
 
 	// Echo function with client address' validation
-	d.AddFunc("ClientAddr", func(clientAddr string, x int) (int, error) {
+	d.AddFunction("ClientAddr", func(clientAddr string, x int) (int, error) {
 		clientHost := strings.SplitN(clientAddr, ":", 2)[0]
 		if clientHost != "allowed.client.host" {
 			return 0, fmt.Errorf("invalid rpc client host: [%s]", clientHost)

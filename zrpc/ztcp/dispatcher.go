@@ -54,7 +54,7 @@ import (
 // functions and/or services.
 //
 // Dispatcher automatically registers all the request and response types
-// for all functions and/or methods registered via AddFunc() and AddService(),
+// for all functions and/or methods registered via AddFunction() and AddService(),
 // so there is no need in calling RegisterType() for these types on server side.
 // Client-side code must call RegisterType() for non-internal request
 // and response types before issuing RPCs via DispatcherClient.
@@ -62,6 +62,7 @@ import (
 // See examples for details.
 type Dispatcher struct {
 	serviceMap map[string]*serviceData
+	funcs      []*funcData
 }
 
 type serviceData struct {
@@ -79,10 +80,11 @@ type funcData struct {
 func NewDispatcher() *Dispatcher {
 	return &Dispatcher{
 		serviceMap: make(map[string]*serviceData),
+		funcs:      make([]*funcData, 256),
 	}
 }
 
-// AddFunc registers the given function f under the name funcName.
+// AddFunction registers the given function f under the name funcName.
 //
 // The function must accept zero, one or two input arguments.
 // If the function has two arguments, then the first argument must have
@@ -98,7 +100,7 @@ func NewDispatcher() *Dispatcher {
 // Arbitrary number of functions can be registered in the dispatcher.
 //
 // See examples for details.
-func (d *Dispatcher) AddFunc(funcName string, f interface{}) {
+func (d *Dispatcher) AddFunction(funcName string, f interface{}) {
 	sd, ok := d.serviceMap[""]
 	if !ok {
 		sd = &serviceData{
@@ -115,11 +117,86 @@ func (d *Dispatcher) AddFunc(funcName string, f interface{}) {
 		fv: reflect.Indirect(reflect.ValueOf(f)),
 	}
 	var err error
-	if fd.inNum, fd.reqt, err = validateFunc(funcName, fd.fv, false); err != nil {
+	if fd.inNum, fd.reqt, err = validaFunction(funcName, fd.fv, false); err != nil {
 		logPanic("ztcp.Dispatcher: %s", err)
 	}
 	sd.funcMap[funcName] = fd
 }
+
+//func (d *Dispatcher) AddFunc(method uint8, f interface{}) error {
+//	if d.funcs[method] != nil {
+//		return errors.New(fmt.Sprintf("ztcp.Dispatcher, method: %d has been already registered", method))
+//	}
+//
+//	fd := &funcData{
+//		fv: reflect.Indirect(reflect.ValueOf(f)),
+//	}
+//	var err error
+//	if fd.inNum, fd.reqt, err = validateFunc(method, fd.fv, false); err != nil {
+//		logPanic("ztcp.Dispatcher: %s", err)
+//	}
+//	sd.funcMap[funcName] = fd
+//
+//}
+//
+//func validateFunc(method uint8, fv reflect.Value, isMethod bool) (inNum int, reqt reflect.Type, err error) {
+//	if funcName == "" {
+//		err = fmt.Errorf("funcName cannot be empty")
+//		return
+//	}
+//
+//	ft := fv.Type()
+//	if ft.Kind() != reflect.Func {
+//		err = fmt.Errorf("function [%s] must be a function instead of %s", funcName, ft)
+//		return
+//	}
+//
+//	inNum = ft.NumIn()
+//	outNum := ft.NumOut()
+//
+//	dt := 0
+//	if isMethod {
+//		dt = 1
+//	}
+//
+//	if inNum == 2+dt {
+//		if ft.In(dt).Kind() != reflect.String {
+//			err = fmt.Errorf("unexpected type for the first argument of the function [%s]: [%s]. Expected string", funcName, ft.In(dt))
+//			return
+//		}
+//	} else if inNum > 2+dt {
+//		err = fmt.Errorf("unexpected number of arguments in the function [%s]: %d. Expected 0, 1 (request) or 2 (clientAddr, request)", funcName, inNum-dt)
+//		return
+//	}
+//
+//	if outNum == 2 {
+//		if !isErrorType(ft.Out(1)) {
+//			err = fmt.Errorf("unexpected type for the second return value of the function [%s]: [%s]. Expected [%s]", funcName, ft.Out(1), errt)
+//			return
+//		}
+//	} else if outNum > 2 {
+//		err = fmt.Errorf("unexpected number of return values for the function %s: %d. Expected 0, 1 (response) or 2 (response, error)", funcName, outNum)
+//		return
+//	}
+//
+//	if inNum > dt {
+//		reqt = ft.In(inNum - 1)
+//		if err = registerType("request", funcName, reqt); err != nil {
+//			return
+//		}
+//	}
+//
+//	if outNum > 0 {
+//		respt := ft.Out(0)
+//		if !isErrorType(respt) {
+//			if err = registerType("response", funcName, ft.Out(0)); err != nil {
+//				return
+//			}
+//		}
+//	}
+//
+//	return
+//}
 
 // AddService registers public methods of the given service under
 // the given name serviceName.
@@ -127,7 +204,7 @@ func (d *Dispatcher) AddFunc(funcName string, f interface{}) {
 // Since only public methods are registered, the service must have at least
 // one public method.
 //
-// All public methods must conform requirements described in AddFunc().
+// All public methods must conform requirements described in AddFunction().
 func (d *Dispatcher) AddService(serviceName string, service interface{}) {
 	if serviceName == "" {
 		logPanic("ztcp.Dispatcher: serviceName cannot be empty")
@@ -156,7 +233,7 @@ func (d *Dispatcher) AddService(serviceName string, service interface{}) {
 			fv: mv.Func,
 		}
 		var err error
-		if fd.inNum, fd.reqt, err = validateFunc(funcName, fd.fv, true); err != nil {
+		if fd.inNum, fd.reqt, err = validaFunction(funcName, fd.fv, true); err != nil {
 			logPanic("ztcp.Dispatcher: %s", err)
 		}
 		funcMap[mv.Name] = fd
@@ -172,7 +249,7 @@ func (d *Dispatcher) AddService(serviceName string, service interface{}) {
 	}
 }
 
-func validateFunc(funcName string, fv reflect.Value, isMethod bool) (inNum int, reqt reflect.Type, err error) {
+func validaFunction(funcName string, fv reflect.Value, isMethod bool) (inNum int, reqt reflect.Type, err error) {
 	if funcName == "" {
 		err = fmt.Errorf("funcName cannot be empty")
 		return
@@ -342,7 +419,7 @@ func init() {
 }
 
 // NewHandlerFunc returns HandlerFunc serving all the functions and/or services
-// registered via AddFunc() and AddService().
+// registered via AddFunction() and AddService().
 //
 // The returned HandlerFunc must be assigned to Server.Handler or
 // passed to New*Server().
@@ -486,10 +563,10 @@ type DispatcherClient struct {
 }
 
 // NewFuncClient returns a client suitable for calling functions registered
-// via AddFunc().
+// via AddFunction().
 func (d *Dispatcher) NewFuncClient(c *Client) *DispatcherClient {
 	if len(d.serviceMap) == 0 || d.serviceMap[""] == nil {
-		logPanic("ztcp.Dispatcher: register at least one function with AddFunc() before calling NewFuncClient()")
+		logPanic("ztcp.Dispatcher: register at least one function with AddFunction() before calling NewFuncClient()")
 	}
 
 	return &DispatcherClient{

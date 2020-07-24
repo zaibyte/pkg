@@ -705,7 +705,7 @@ func clientHandler(c *Client) {
 func clientHandleConnection(c *Client, conn net.Conn) {
 
 	var err error
-	tt := time.Unix(0, tsc.UnixNano()).Add(magicNumberDuration)
+	tt := time.Now().Add(magicNumberDuration)
 	if err = conn.SetWriteDeadline(tt); err != nil {
 		c.LogError("ztcp.Client: [%s]. Error when setting magic number deadline: [%s]", c.Addr, err)
 		conn.Close()
@@ -716,7 +716,11 @@ func clientHandleConnection(c *Client, conn net.Conn) {
 		conn.Close()
 		return
 	}
-	conn.SetWriteDeadline(time.Time{})
+	if err = conn.SetWriteDeadline(time.Time{}); err != nil { // Reset deadline avoiding unexpected timeout.
+		c.LogError("ztcp.Client: [%s]. Error when reset write deadline: [%s]", c.Addr, err)
+		conn.Close()
+		return
+	}
 
 	stopChan := make(chan struct{})
 
