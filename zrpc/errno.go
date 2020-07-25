@@ -12,9 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package zerrors
+// Package zerrors provides errors number for indicating error.
+// Saving network I/O and marshal & unmarshal cost in RPC.
+//
+// We don't need to support all error types, because any error should be
+// logged in where it raises. For the client, it just need
+// to know there is an error in the request, and what the type it is.
+package zrpc
 
-import "errors"
+import (
+	"errors"
+)
 
 // An Errno is an unsigned number describing an error condition.
 // It implements the error interface. The zero Errno is by convention
@@ -27,6 +35,7 @@ import "errors"
 type Errno uint16
 
 func (e Errno) Error() string {
+
 	if e == 0 {
 		return ""
 	}
@@ -37,21 +46,11 @@ func (e Errno) Error() string {
 			return s
 		}
 	}
-	return UnknownErrno.Error()
+	return "unknown error"
 }
 
-// ErrnoErr returns common boxed Errno values.
-func ErrnoErr(e Errno) error {
-	switch e {
-	case 0:
-		return nil
-	default:
-		return e
-	}
-}
-
-// ErrErrno returns Errno value by error.
-func ErrErrno(err error) Errno {
+// ErrToErrno returns Errno value by error.
+func ErrToErrno(err error) Errno {
 	if err == nil {
 		return 0
 	}
@@ -69,14 +68,29 @@ func ErrErrno(err error) Errno {
 		return u
 	}
 
-	return UnknownErrno
+	return Errno(InternalServerError)
 }
 
 const (
-	UnknownErrno = Errno(65535)
+	BadRequest          = 1
+	NotFound            = 2
+	NotImplemented      = 3
+	Timeout             = 4
+	TooManyRequests     = 5
+	InternalServerError = 6
+	ConnectionError     = 7
+	Canceled            = 8
 )
 
-// Error table
+// Error table.
+// Please add errno in order.
 var errnoStr = [...]string{
-	65535: "unknown error",
+	BadRequest:          "bad message",
+	NotFound:            "not found",
+	NotImplemented:      "not implemented",
+	Timeout:             "timeout",
+	TooManyRequests:     "too many requests",
+	InternalServerError: "internal server error",
+	ConnectionError:     "connection error",
+	Canceled:            "canceled",
 }
