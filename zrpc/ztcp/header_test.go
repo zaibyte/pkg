@@ -33,21 +33,12 @@ package ztcp
 
 import (
 	"encoding/binary"
-	"os"
-	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/zaibyte/pkg/uid"
-
-	"github.com/zaibyte/pkg/zlog/xlogtest"
 )
-
-func TestMain(m *testing.M) {
-	xlogtest.New()
-	code := m.Run()
-	xlogtest.Close()
-	os.Exit(code)
-}
 
 func TestRequestHeaderCanBeEncodedAndDecoded(t *testing.T) {
 	r := requestHeader{
@@ -59,16 +50,12 @@ func TestRequestHeaderCanBeEncodedAndDecoded(t *testing.T) {
 	}
 	buf := make([]byte, requestHeaderSize)
 	result := r.encode(buf)
-	if len(result) != requestHeaderSize {
-		t.Fatalf("unexpected size")
-	}
+	assert.Equal(t, requestHeaderSize, len(result))
+
 	rr := requestHeader{}
-	if !rr.decode(result) {
-		t.Fatalf("decode failed")
-	}
-	if !reflect.DeepEqual(&r, &rr) {
-		t.Fatal("request header changed")
-	}
+	assert.Nil(t, rr.decode(result))
+
+	assert.Equal(t, r, rr)
 }
 
 func TestRequestHeaderCRCIsChecked(t *testing.T) {
@@ -81,26 +68,20 @@ func TestRequestHeaderCRCIsChecked(t *testing.T) {
 	}
 	buf := make([]byte, requestHeaderSize)
 	result := r.encode(buf)
-	if len(result) != requestHeaderSize {
-		t.Fatalf("unexpected size")
-	}
+	assert.Equal(t, requestHeaderSize, len(result))
+
 	rr := requestHeader{}
-	if !rr.decode(result) {
-		t.Fatalf("decode failed")
-	}
+	assert.Nil(t, rr.decode(result))
+
 	crc := binary.BigEndian.Uint32(result[26:])
 	binary.BigEndian.PutUint32(result[26:], crc+1)
-	if rr.decode(result) {
-		t.Fatalf("crc error not reported")
-	}
+	assert.Equal(t, ErrChecksumMismatch, rr.decode(result))
+
 	binary.BigEndian.PutUint32(result[26:], crc)
-	if !rr.decode(result) {
-		t.Fatalf("decode failed")
-	}
+	assert.Nil(t, rr.decode(result))
+
 	binary.BigEndian.PutUint64(result[2:], 0)
-	if rr.decode(result) {
-		t.Fatalf("crc error not reported")
-	}
+	assert.Equal(t, ErrChecksumMismatch, rr.decode(result))
 }
 
 func TestInvalidMethodNameIsReported(t *testing.T) {
@@ -117,64 +98,49 @@ func TestInvalidMethodNameIsReported(t *testing.T) {
 		}
 		buf := make([]byte, requestHeaderSize)
 		result := r.encode(buf)
-		if len(result) != requestHeaderSize {
-			t.Fatalf("unexpected size")
-		}
+		assert.Equal(t, requestHeaderSize, len(result))
+
 		rr := requestHeader{}
-		if rr.decode(result) {
-			t.Fatalf("decode did not report invalid method name")
-		}
+		assert.Equal(t, ErrInvalidMethod, rr.decode(result))
 	}
 }
 
 func TestRespHeaderCanBeEncodedAndDecoded(t *testing.T) {
 	r := respHeader{
 		msgID: 2048,
-		reqid: uid.MakeReqID(),
 		size:  1024,
 		crc:   1000,
 	}
 	buf := make([]byte, respHeaderSize)
 	result := r.encode(buf)
-	if len(result) != respHeaderSize {
-		t.Fatalf("unexpected size")
-	}
+	assert.Equal(t, respHeaderSize, len(result))
+
 	rr := respHeader{}
-	if !rr.decode(result) {
-		t.Fatalf("decode failed")
-	}
-	if !reflect.DeepEqual(&r, &rr) {
-		t.Fatal("resp header changed", r, rr)
-	}
+	assert.Nil(t, rr.decode(result))
+
+	assert.Equal(t, r, rr)
 }
 
 func TestRespHeaderCRCIsChecked(t *testing.T) {
 	r := respHeader{
 		msgID: 2048,
-		reqid: uid.MakeReqID(),
 		size:  1024,
 		crc:   1000,
 	}
 	buf := make([]byte, respHeaderSize)
 	result := r.encode(buf)
-	if len(result) != respHeaderSize {
-		t.Fatalf("unexpected size")
-	}
+	assert.Equal(t, respHeaderSize, len(result))
+
 	rr := respHeader{}
-	if !rr.decode(result) {
-		t.Fatalf("decode failed")
-	}
-	crc := binary.BigEndian.Uint32(result[24:])
-	binary.BigEndian.PutUint32(result[24:], crc+1)
-	if rr.decode(result) {
-		t.Fatalf("crc error not reported")
-	}
-	binary.BigEndian.PutUint32(result[24:], crc)
-	if !rr.decode(result) {
-		t.Fatalf("decode failed")
-	}
+	assert.Nil(t, rr.decode(result))
+
+	crc := binary.BigEndian.Uint32(result[16:])
+	binary.BigEndian.PutUint32(result[16:], crc+1)
+	assert.Equal(t, ErrChecksumMismatch, rr.decode(result))
+
+	binary.BigEndian.PutUint32(result[16:], crc)
+	assert.Nil(t, rr.decode(result))
+
 	binary.BigEndian.PutUint64(result[2:], 0)
-	if rr.decode(result) {
-		t.Fatalf("crc error not reported")
-	}
+	assert.Equal(t, ErrChecksumMismatch, rr.decode(result))
 }

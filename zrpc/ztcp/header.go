@@ -35,8 +35,6 @@ import (
 	"encoding/binary"
 
 	"github.com/zaibyte/pkg/zdigest"
-
-	"github.com/zaibyte/pkg/zlog"
 )
 
 const requestHeaderSize = 34
@@ -74,9 +72,9 @@ func (h *requestHeader) encode(buf []byte) []byte {
 	return buf[:requestHeaderSize]
 }
 
-func (h *requestHeader) decode(buf []byte) bool {
+func (h *requestHeader) decode(buf []byte) error {
 	if len(buf) < requestHeaderSize {
-		return false
+		return ErrBadMessage
 	}
 
 	reqid := binary.BigEndian.Uint64(buf[18:26])
@@ -86,30 +84,27 @@ func (h *requestHeader) decode(buf []byte) bool {
 	binary.BigEndian.PutUint32(buf[26:30], 0)
 	expected := zdigest.Checksum(buf[:requestHeaderSize])
 	if incoming != expected {
-		zlog.ErrorID(reqid, "header crc check failed")
-		return false
+		return ErrChecksumMismatch
 	}
 	binary.BigEndian.PutUint32(buf[26:30], incoming)
 	method := binary.BigEndian.Uint16(buf)
 	if method == 0 || method > maxMethod {
-		zlog.ErrorID(reqid, "invalid method type")
-		return false
+		return ErrInvalidMethod
 	}
 	h.method = method
 	h.msgID = binary.BigEndian.Uint64(buf[2:10])
 	h.size = binary.BigEndian.Uint64(buf[10:18])
 	h.crc = binary.BigEndian.Uint32(buf[30:34])
-	return true
+	return nil
 }
 
-const respHeaderSize = 32
+const respHeaderSize = 24
 
 type respHeader struct {
 	msgID uint64 // [0, 8)
 	size  uint64 // [8, 16)
-	reqid uint64 // [16, 24)
-	hcrc  uint32 // [24, 28), Header CRC.
-	crc   uint32 // [28,32)
+	hcrc  uint32 // [16, 20), Header CRC.
+	crc   uint32 // [20,24)
 }
 
 func (h *respHeader) encode(buf []byte) []byte {
@@ -118,33 +113,28 @@ func (h *respHeader) encode(buf []byte) []byte {
 	}
 	binary.BigEndian.PutUint64(buf[0:8], h.msgID)
 	binary.BigEndian.PutUint64(buf[8:16], h.size)
-	binary.BigEndian.PutUint64(buf[16:24], h.reqid)
-	binary.BigEndian.PutUint32(buf[24:28], 0)
-	binary.BigEndian.PutUint32(buf[28:32], h.crc)
+	binary.BigEndian.PutUint32(buf[16:20], 0)
+	binary.BigEndian.PutUint32(buf[20:24], h.crc)
 	v := zdigest.Checksum(buf[:respHeaderSize])
-	binary.BigEndian.PutUint32(buf[24:28], v)
+	binary.BigEndian.PutUint32(buf[16:20], v)
 	return buf[:respHeaderSize]
 }
 
-func (h *respHeader) decode(buf []byte) bool {
+func (h *respHeader) decode(buf []byte) error {
 	if len(buf) < respHeaderSize {
-		return false
+		return ErrBadMessage
 	}
 
-	reqid := binary.BigEndian.Uint64(buf[16:24])
-	h.reqid = reqid
-
-	incoming := binary.BigEndian.Uint32(buf[24:28])
-	binary.BigEndian.PutUint32(buf[24:28], 0)
+	incoming := binary.BigEndian.Uint32(buf[16:20])
+	binary.BigEndian.PutUint32(buf[16:20], 0)
 	expected := zdigest.Checksum(buf[:respHeaderSize])
 	if incoming != expected {
-		zlog.ErrorID(reqid, "header crc check failed")
-		return false
+		return ErrChecksumMismatch
 	}
-	binary.BigEndian.PutUint32(buf[24:28], incoming)
+	binary.BigEndian.PutUint32(buf[16:20], incoming)
 
 	h.msgID = binary.BigEndian.Uint64(buf[0:8])
 	h.size = binary.BigEndian.Uint64(buf[8:16])
-	h.crc = binary.BigEndian.Uint32(buf[28:32])
-	return true
+	h.crc = binary.BigEndian.Uint32(buf[20:24])
+	return nil
 }
