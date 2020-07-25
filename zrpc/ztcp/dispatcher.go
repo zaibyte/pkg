@@ -430,12 +430,12 @@ func (d *Dispatcher) NewHandlerFunc() HandlerFunc {
 
 	serviceMap := copyServiceMap(d.serviceMap)
 
-	return func(clientAddr string, request interface{}) interface{} {
+	return func(request interface{}) interface{} {
 		req, ok := request.(*dispatcherRequest)
 		if !ok {
 			logPanic("ztcp.Dispatcher: unsupported request type received from the client: %T", request)
 		}
-		return dispatchRequest(serviceMap, clientAddr, req)
+		return dispatchRequest(serviceMap, req)
 	}
 }
 
@@ -454,7 +454,7 @@ func copyServiceMap(sm map[string]*serviceData) map[string]*serviceData {
 	return serviceMap
 }
 
-func dispatchRequest(serviceMap map[string]*serviceData, clientAddr string, req *dispatcherRequest) *dispatcherResponse {
+func dispatchRequest(serviceMap map[string]*serviceData, req *dispatcherRequest) *dispatcherResponse {
 	callName := strings.SplitN(req.Name, ".", 2)
 	if len(callName) != 2 {
 		return &dispatcherResponse{
@@ -486,9 +486,7 @@ func dispatchRequest(serviceMap map[string]*serviceData, clientAddr string, req 
 			dt = 1
 			inArgs[0] = s.sv
 		}
-		if fd.inNum == 2+dt {
-			inArgs[dt] = reflect.ValueOf(clientAddr)
-		}
+
 		if fd.inNum > dt {
 			reqv := reflect.ValueOf(req.Request)
 			reqt := reflect.TypeOf(req.Request)

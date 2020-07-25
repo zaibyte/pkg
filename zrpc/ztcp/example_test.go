@@ -65,7 +65,7 @@ func ExampleServer() {
 	RegisterType(&ExampleStruct{})
 
 	// Start echo server
-	handlerFunc := func(clientAddr string, request interface{}) interface{} {
+	handlerFunc := func(request interface{}) interface{} {
 		return request
 	}
 	s := NewTCPServer("127.0.0.1:43216", handlerFunc)
@@ -118,10 +118,8 @@ func ExampleDispatcher_AddFunc() {
 	// Function without arguments and one return value
 	d.AddFunction("NoArgsOneRet", func() int { return 42 })
 
-	// Function with two arguments and no return values.
-	// The first argument must have string type - the server passes
-	// client address in it.
-	d.AddFunction("TwoArgsNoRets", func(clientAddr string, requests []byte) {})
+	// Function with one arguments and no return values.
+	d.AddFunction("TwoArgsNoRets", func(requests []byte) {})
 
 	// Function with one argument and two return values.
 	// The second return value must have error type.

@@ -91,13 +91,6 @@ func TestDispatcherEmptyFuncName(t *testing.T) {
 	})
 }
 
-func TestDispatcherInvalidFirstArgType(t *testing.T) {
-	d := NewDispatcher()
-	testPanic(t, func() {
-		d.AddFunction("foo", func(clientAddr bool, request string) {})
-	})
-}
-
 func TestDispatcherInvalidSecondResType(t *testing.T) {
 	d := NewDispatcher()
 	testPanic(t, func() {
@@ -108,7 +101,7 @@ func TestDispatcherInvalidSecondResType(t *testing.T) {
 func TestDispatcherTooManyArgs(t *testing.T) {
 	d := NewDispatcher()
 	testPanic(t, func() {
-		d.AddFunction("foo", func(clientAddr string, foo, bar int) {})
+		d.AddFunction("foo", func(foo, bar int) {})
 	})
 }
 
@@ -684,31 +677,6 @@ func TestDispatcherOneArgNoResCall(t *testing.T) {
 	})
 }
 
-func TestDispatcherTwoArgNoResCall(t *testing.T) {
-	d := NewDispatcher()
-
-	serverS := 0
-	clientS := 0
-	d.AddFunction("TwoArgNoRes", func(clientAddr string, n int) { serverS += n })
-
-	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
-		for i := 0; i < 10; i++ {
-			res, err := dc.Call("TwoArgNoRes", i)
-			if err != nil {
-				t.Fatalf("Unexpected error: [%s]", err)
-			}
-			if res != nil {
-				t.Fatalf("Unexpected response: [%+v]", res)
-			}
-			clientS += i
-		}
-
-		if clientS != serverS {
-			t.Fatalf("Unepxected serverS=%d. Expected %d", serverS, clientS)
-		}
-	})
-}
-
 func TestDispatcherNoArgErrorResCall(t *testing.T) {
 	d := NewDispatcher()
 
@@ -751,25 +719,6 @@ func TestDispatcherOneArgErrorResCall(t *testing.T) {
 		}
 		if err.Error() != reqs {
 			t.Fatalf("Unexpected error: [%s]. Expected [%s]", err, reqs)
-		}
-		if res != nil {
-			t.Fatalf("Unexpected response: [%+v]", res)
-		}
-	})
-}
-
-func TestDispatcherTwoArgErrorResCall(t *testing.T) {
-	d := NewDispatcher()
-
-	d.AddFunction("TwoArgErrorRes", func(clientAddr string, r int) error { return fmt.Errorf("%d", r) })
-
-	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
-		res, err := dc.Call("TwoArgErrorRes", 123)
-		if err == nil {
-			t.Fatalf("Unexpected nil error")
-		}
-		if err.Error() != fmt.Sprintf("%d", 123) {
-			t.Fatalf("Unexpected error: [%s]. Expected [123]", err)
 		}
 		if res != nil {
 			t.Fatalf("Unexpected response: [%+v]", res)
@@ -826,48 +775,6 @@ func TestDispatcherOneArgTwoResCall(t *testing.T) {
 	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
 		reqs := 442
 		res, err := dc.Call("OneArgTwoResCall", reqs)
-		if err != nil {
-			t.Fatalf("Unexpected error: [%s]", err)
-		}
-		ress, ok := res.(int)
-		if !ok {
-			t.Fatalf("Unexpected response type: %T. Expected int", res)
-		}
-		if ress != reqs {
-			t.Fatalf("Unexpected response [%d]. Expected [%d]", ress, reqs)
-		}
-	})
-}
-
-func TestDispatcherTwoArgOneResCall(t *testing.T) {
-	d := NewDispatcher()
-
-	d.AddFunction("TwoArgOneResCall", func(clientAddr string, req int) int { return req })
-
-	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
-		reqs := 142
-		res, err := dc.Call("TwoArgOneResCall", reqs)
-		if err != nil {
-			t.Fatalf("Unexpected error: [%s]", err)
-		}
-		ress, ok := res.(int)
-		if !ok {
-			t.Fatalf("Unexpected response type: %T. Expected int", res)
-		}
-		if ress != reqs {
-			t.Fatalf("Unexpected response [%d]. Expected [%d]", ress, reqs)
-		}
-	})
-}
-
-func TestDispatcherTwoArgTwoResCall(t *testing.T) {
-	d := NewDispatcher()
-
-	d.AddFunction("TwoArgTwoResCall", func(clientAddr string, req int) (int, error) { return req, nil })
-
-	testDispatcherFunc(t, d, func(dc *DispatcherClient) {
-		reqs := 1423
-		res, err := dc.Call("TwoArgTwoResCall", reqs)
 		if err != nil {
 			t.Fatalf("Unexpected error: [%s]", err)
 		}

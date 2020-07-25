@@ -59,7 +59,7 @@ func init() {
 	SetErrorLogger(NilErrorLogger)
 }
 
-func echoHandler(clientAddr string, request interface{}) interface{} {
+func echoHandler(request interface{}) interface{} {
 	return request
 }
 
@@ -229,7 +229,7 @@ func TestRequestTimeout(t *testing.T) {
 	addr := getRandomAddr()
 	s := &Server{
 		Addr: addr,
-		Handler: func(clientAddr string, request interface{}) interface{} {
+		Handler: func(request interface{}) interface{} {
 			time.Sleep(10 * time.Second)
 			return request
 		},
@@ -264,7 +264,7 @@ func TestCallTimeout(t *testing.T) {
 	addr := getRandomAddr()
 	s := &Server{
 		Addr: addr,
-		Handler: func(clientAddr string, request interface{}) interface{} {
+		Handler: func(request interface{}) interface{} {
 			time.Sleep(10 * time.Second)
 			return request
 		},
@@ -318,7 +318,7 @@ func TestServerPanic(t *testing.T) {
 	addr := getRandomAddr()
 	s := &Server{
 		Addr: addr,
-		Handler: func(clientAddr string, request interface{}) interface{} {
+		Handler: func(request interface{}) interface{} {
 			if request.(string) == "foobar" {
 				panic("server panic")
 			}
@@ -367,7 +367,7 @@ func TestServerStuck(t *testing.T) {
 	addr := getRandomAddr()
 	s := &Server{
 		Addr: addr,
-		Handler: func(clientAddr string, request interface{}) interface{} {
+		Handler: func(request interface{}) interface{} {
 			time.Sleep(time.Second)
 			return "aaa"
 		},
@@ -496,18 +496,9 @@ func sillyDecrypt(p []byte) {
 	sillyEncrypt(p)
 }
 
-func newOnConnectFunc(t *testing.T) OnConnectFunc {
-	return func(remoteAddr string, rwc io.ReadWriteCloser) (net.Conn, error) {
-		return &onConnectRwcWrapper{
-			rwc: rwc,
-			t:   t,
-		}, nil
-	}
-}
-
 func TestConcurrency(t *testing.T) {
 	addr := getRandomAddr()
-	s := NewTCPServer(addr, func(clientAddr string, request interface{}) interface{} {
+	s := NewTCPServer(addr, func(request interface{}) interface{} {
 		time.Sleep(time.Duration(request.(int)) * time.Millisecond)
 		return request
 	})
@@ -649,7 +640,7 @@ func testSend(t *testing.T, value interface{}) {
 	addr := getRandomAddr()
 	s := &Server{
 		Addr: addr,
-		Handler: func(clientAddr string, request interface{}) interface{} {
+		Handler: func(request interface{}) interface{} {
 			if !reflect.DeepEqual(value, request) {
 				t.Fatalf("Unexpected request: %#v. Expected %#v", request, value)
 			}
@@ -744,7 +735,7 @@ func TestClientPendingRequestsCount(t *testing.T) {
 	addr := getRandomAddr()
 	respCh := make(chan struct{})
 	reqCh := make(chan struct{}, 1)
-	s := NewTCPServer(addr, func(clientAddr string, request interface{}) interface{} {
+	s := NewTCPServer(addr, func(request interface{}) interface{} {
 		reqCh <- struct{}{}
 		<-respCh
 		return request
@@ -793,7 +784,7 @@ func TestClientPendingRequestsCount(t *testing.T) {
 
 func TestNilHandler(t *testing.T) {
 	addr := getRandomAddr()
-	s := NewTCPServer(addr, func(clientAddr string, request interface{}) interface{} {
+	s := NewTCPServer(addr, func(request interface{}) interface{} {
 		if request != nil {
 			t.Fatalf("Unexpected request: %#v. Expected nil", request)
 		}
@@ -823,7 +814,7 @@ func TestAsyncResultCancel(t *testing.T) {
 	addr := getRandomAddr()
 	s := &Server{
 		Addr: addr,
-		Handler: func(clientAddr string, request interface{}) interface{} {
+		Handler: func(request interface{}) interface{} {
 			time.Sleep(time.Millisecond * 100)
 			return request
 		},
@@ -893,7 +884,7 @@ func TestIntHandler(t *testing.T) {
 	addr := getRandomAddr()
 	s := &Server{
 		Addr:    addr,
-		Handler: func(clientAddr string, request interface{}) interface{} { return request.(int) + 234 },
+		Handler: func(request interface{}) interface{} { return request.(int) + 234 },
 	}
 	if err := s.Start(); err != nil {
 		t.Fatalf("Server.Start() failed: [%s]", err)
@@ -925,7 +916,7 @@ func TestStringHandler(t *testing.T) {
 	addr := getRandomAddr()
 	s := &Server{
 		Addr:    addr,
-		Handler: func(clientAddr string, request interface{}) interface{} { return request.(string) + " world" },
+		Handler: func(request interface{}) interface{} { return request.(string) + " world" },
 	}
 	if err := s.Start(); err != nil {
 		t.Fatalf("Server.Start() failed: [%s]", err)
@@ -964,7 +955,7 @@ func TestStructHandler(t *testing.T) {
 	addr := getRandomAddr()
 	s := &Server{
 		Addr:    addr,
-		Handler: func(clientAddr string, request interface{}) interface{} { return request.(*S) },
+		Handler: func(request interface{}) interface{} { return request.(*S) },
 	}
 	if err := s.Start(); err != nil {
 		t.Fatalf("Server.Start() failed: [%s]", err)
@@ -1161,7 +1152,7 @@ func TestBatchCall(t *testing.T) {
 
 func TestBatchCallTimeout(t *testing.T) {
 	addr := getRandomAddr()
-	s := NewTCPServer(addr, func(remoteAddr string, request interface{}) interface{} {
+	s := NewTCPServer(addr, func(request interface{}) interface{} {
 		time.Sleep(200 * time.Millisecond)
 		return 123
 	})
@@ -1223,7 +1214,7 @@ func TestBatchCallSkipResponse(t *testing.T) {
 	doneCh := make(chan struct{})
 
 	addr := getRandomAddr()
-	s := NewTCPServer(addr, func(remoteAdrr string, request interface{}) interface{} {
+	s := NewTCPServer(addr, func(request interface{}) interface{} {
 		n := atomic.AddUint32(&serverCallsCounter, 1)
 		if n == uint32(N) {
 			close(doneCh)
@@ -1260,7 +1251,7 @@ func TestBatchCallMixed(t *testing.T) {
 	doneCh := make(chan struct{})
 
 	addr := getRandomAddr()
-	s := NewTCPServer(addr, func(remoteAdrr string, request interface{}) interface{} {
+	s := NewTCPServer(addr, func(request interface{}) interface{} {
 		n := atomic.AddUint32(&serverCallsCounter, 1)
 		if n == uint32(N*2) {
 			close(doneCh)

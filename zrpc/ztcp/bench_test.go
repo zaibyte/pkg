@@ -377,7 +377,7 @@ func doRealWork() {
 
 func simulateRealApp(b *testing.B, workersCount int) {
 	addr := getRandomAddr()
-	s := NewTCPServer(addr, func(clientAddr string, request interface{}) interface{} {
+	s := NewTCPServer(addr, func(request interface{}) interface{} {
 		doRealWork()
 		return request
 	})

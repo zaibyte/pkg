@@ -52,7 +52,6 @@ import (
 
 // HandlerFunc is a server handler function.
 //
-// clientAddr contains client address returned by Listener.Accept().
 // Request and response types may be arbitrary.
 // All the request and response types the HandlerFunc may use must be registered
 // with RegisterType() before starting the server.
@@ -60,7 +59,7 @@ import (
 // float64, etc. or arrays, slices and maps containing base Go types.
 //
 // Hint: use Dispatcher for HandlerFunc construction.
-type HandlerFunc func(clientAddr string, request interface{}) (response interface{})
+type HandlerFunc func(request interface{}) (response interface{})
 
 // Server implements RPC server.
 //
@@ -209,14 +208,13 @@ func serverHandler(s *Server, workersCh chan struct{}) {
 	defer s.stopWg.Done()
 
 	var conn net.Conn
-	var clientAddr string
 	var err error
 	var stopping atomic.Value
 
 	for {
 		acceptChan := make(chan struct{})
 		go func() {
-			if conn, clientAddr, err = s.Listener.Accept(); err != nil {
+			if conn, err = s.Listener.Accept(); err != nil {
 				if stopping.Load() == nil {
 					s.LogError("ztcp.Server: [%s]. Cannot accept new connection: [%s]", s.Addr, err)
 				}
@@ -243,11 +241,11 @@ func serverHandler(s *Server, workersCh chan struct{}) {
 		}
 
 		s.stopWg.Add(1)
-		go serverHandleConnection(s, conn, clientAddr, workersCh)
+		go serverHandleConnection(s, conn, workersCh)
 	}
 }
 
-func serverHandleConnection(s *Server, conn net.Conn, clientAddr string, workersCh chan struct{}) {
+func serverHandleConnection(s *Server, conn net.Conn, workersCh chan struct{}) {
 	defer s.stopWg.Done()
 
 	var err error
@@ -259,7 +257,7 @@ func serverHandleConnection(s *Server, conn net.Conn, clientAddr string, workers
 		err = readMagicNumber(conn, buf[:])
 		if err != nil {
 			if stopping.Load() == nil {
-				s.LogError("ztcp.Server: [%s]->[%s]. Error when reading magic number from client: [%s]", clientAddr, s.Addr, err)
+				s.LogError("ztcp.Server: Error when reading magic number from client: [%s]", err)
 			}
 		}
 
@@ -276,7 +274,7 @@ func serverHandleConnection(s *Server, conn net.Conn, clientAddr string, workers
 		conn.Close()
 		return
 	case <-time.After(2 * time.Second):
-		s.LogError("ztcp.Server: [%s]->[%s]. Cannot obtain reading magic number from client during 2s", clientAddr, s.Addr)
+		s.LogError("ztcp.Server: Cannot obtain reading magic number from client during 2s")
 		conn.Close()
 		return
 	}
@@ -285,10 +283,10 @@ func serverHandleConnection(s *Server, conn net.Conn, clientAddr string, workers
 	stopChan := make(chan struct{})
 
 	readerDone := make(chan struct{})
-	go serverReader(s, conn, clientAddr, responsesChan, stopChan, readerDone, workersCh)
+	go serverReader(s, conn, responsesChan, stopChan, readerDone, workersCh)
 
 	writerDone := make(chan struct{})
-	go serverWriter(s, conn, clientAddr, responsesChan, stopChan, writerDone)
+	go serverWriter(s, conn, responsesChan, stopChan, writerDone)
 
 	select {
 	case <-readerDone:
@@ -318,7 +316,7 @@ func readMagicNumber(conn net.Conn, magicNum []byte) error {
 		return err
 	}
 	if bytes.Equal(magicNum, poisonNumber[:]) {
-		return errPoisonReceived
+		return ErrPoisonReceived
 	}
 	if !bytes.Equal(magicNum, magicNumber[:]) {
 		return ErrBadMessage
@@ -330,11 +328,10 @@ func readMagicNumber(conn net.Conn, magicNum []byte) error {
 }
 
 type serverMessage struct {
-	ID         uint64
-	Request    interface{}
-	Response   interface{}
-	Error      string
-	ClientAddr string
+	ID       uint64
+	Request  interface{}
+	Response interface{}
+	Error    string
 }
 
 var serverMessagePool = &sync.Pool{
@@ -356,12 +353,12 @@ func isServerStop(stopChan <-chan struct{}) bool {
 	}
 }
 
-func serverReader(s *Server, r io.Reader, clientAddr string, responsesChan chan<- *serverMessage,
+func serverReader(s *Server, r io.Reader, responsesChan chan<- *serverMessage,
 	stopChan <-chan struct{}, done chan<- struct{}, workersCh chan struct{}) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			s.LogError("ztcp.Server: [%s]->[%s]. Panic when reading data from client: %v", clientAddr, s.Addr, r)
+			s.LogError("ztcp.Server: Panic when reading data from client: %v", r)
 		}
 		close(done)
 	}()
@@ -373,7 +370,7 @@ func serverReader(s *Server, r io.Reader, clientAddr string, responsesChan chan<
 	for {
 		if err := d.Decode(&wr); err != nil {
 			if !isClientDisconnect(err) && !isServerStop(stopChan) {
-				s.LogError("ztcp.Server: [%s]->[%s]. Cannot decode request: [%s]", clientAddr, s.Addr, err)
+				s.LogError("ztcp.Server: Cannot decode request: [%s]", err)
 			}
 			return
 		}
@@ -381,7 +378,6 @@ func serverReader(s *Server, r io.Reader, clientAddr string, responsesChan chan<
 		m := serverMessagePool.Get().(*serverMessage)
 		m.ID = wr.ID
 		m.Request = wr.Request
-		m.ClientAddr = clientAddr
 
 		wr.ID = 0
 		wr.Request = nil
@@ -402,8 +398,6 @@ func serverReader(s *Server, r io.Reader, clientAddr string, responsesChan chan<
 func serveRequest(s *Server, responsesChan chan<- *serverMessage, stopChan <-chan struct{}, m *serverMessage, workersCh <-chan struct{}) {
 	request := m.Request
 	m.Request = nil
-	clientAddr := m.ClientAddr
-	m.ClientAddr = ""
 	skipResponse := m.ID == 0
 
 	if skipResponse {
@@ -412,7 +406,7 @@ func serveRequest(s *Server, responsesChan chan<- *serverMessage, stopChan <-cha
 		serverMessagePool.Put(m)
 	}
 
-	response, err := callHandlerWithRecover(s.LogError, s.Handler, clientAddr, s.Addr, request)
+	response, err := callHandlerWithRecover(s.LogError, s.Handler, s.Addr, request)
 
 	if !skipResponse {
 		m.Response = response
@@ -433,20 +427,20 @@ func serveRequest(s *Server, responsesChan chan<- *serverMessage, stopChan <-cha
 	<-workersCh
 }
 
-func callHandlerWithRecover(logErrorFunc LoggerFunc, handler HandlerFunc, clientAddr, serverAddr string, request interface{}) (response interface{}, errStr string) {
+func callHandlerWithRecover(logErrorFunc LoggerFunc, handler HandlerFunc, serverAddr string, request interface{}) (response interface{}, errStr string) {
 	defer func() {
 		if x := recover(); x != nil {
 			stackTrace := make([]byte, 1<<20)
 			n := runtime.Stack(stackTrace, false)
 			errStr = fmt.Sprintf("Panic occured: %v\nStack trace: %s", x, stackTrace[:n])
-			logErrorFunc("ztcp.Server: [%s]->[%s]. %s", clientAddr, serverAddr, errStr)
+			logErrorFunc("ztcp.Server: %s", errStr)
 		}
 	}()
-	response = handler(clientAddr, request)
+	response = handler(request)
 	return
 }
 
-func serverWriter(s *Server, w io.Writer, clientAddr string, responsesChan <-chan *serverMessage, stopChan <-chan struct{}, done chan<- struct{}) {
+func serverWriter(s *Server, w io.Writer, responsesChan <-chan *serverMessage, stopChan <-chan struct{}, done chan<- struct{}) {
 	defer func() { close(done) }()
 
 	e := newMessageEncoder(w, s.SendBufferSize)
@@ -471,7 +465,7 @@ func serverWriter(s *Server, w io.Writer, clientAddr string, responsesChan <-cha
 			case <-flushChan:
 				if err := e.Flush(); err != nil {
 					if !isServerStop(stopChan) {
-						s.LogError("ztcp.Server: [%s]->[%s]: Cannot flush responses to underlying stream: [%s]", clientAddr, s.Addr, err)
+						s.LogError("ztcp.Server: Cannot flush responses to underlying stream: [%s]", err)
 					}
 					return
 				}
@@ -493,7 +487,7 @@ func serverWriter(s *Server, w io.Writer, clientAddr string, responsesChan <-cha
 		serverMessagePool.Put(m)
 
 		if err := e.Encode(wr); err != nil {
-			s.LogError("ztcp.Server: [%s]->[%s]. Cannot send response to wire: [%s]", clientAddr, s.Addr, err)
+			s.LogError("ztcp.Server: Cannot send response to wire: [%s]", err)
 			return
 		}
 		wr.Response = nil

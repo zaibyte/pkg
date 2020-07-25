@@ -47,9 +47,14 @@ import (
 )
 
 var (
+	ErrChecksumMismatch = errors.New("checksum mismatch")
 	// ErrBadMessage is the error returned to indicate the incoming message is corrupted.
-	ErrBadMessage       = errors.New("invalid message")
-	errPoisonReceived   = errors.New("poison received")
+	ErrBadMessage     = errors.New("invalid message")
+	ErrPoisonReceived = errors.New("poison received")
+	ErrInvalidMethod  = errors.New("invalid method")
+)
+
+var (
 	magicNumber         = [2]byte{0x7A, 0x61}
 	poisonNumber        = [2]byte{0x0, 0x0}
 	payloadBufferSize   = 4 * 1024 * 1024
@@ -85,14 +90,13 @@ type Listener interface {
 	Init(addr string) error
 
 	// Accept must return incoming connections from clients.
-	// clientAddr must contain client's address in user-readable view.
 	//
 	// It is expected that the returned conn immediately
 	// sends all the data passed via Write() to the client.
 	// Otherwise ztcp may hang.
 	// The conn implementation must call Flush() on underlying buffered
 	// streams before returning from Write().
-	Accept() (conn net.Conn, clientAddr string, err error)
+	Accept() (conn net.Conn, err error)
 
 	// Close closes the listener.
 	// All pending calls to Accept() must immediately return errors after
@@ -125,30 +129,30 @@ func (ln *defaultListener) ListenAddr() net.Addr {
 	return nil
 }
 
-func (ln *defaultListener) Accept() (conn net.Conn, clientAddr string, err error) {
+func (ln *defaultListener) Accept() (conn net.Conn, err error) {
 	c, err := ln.L.Accept()
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	tcpConn := c.(*net.TCPConn)
 	if err = setTCPConn(tcpConn); err != nil {
 		c.Close()
-		return nil, "", err
+		return nil, err
 	}
 	if ln.tlsCfg != nil {
 		c = tls.Server(c, ln.tlsCfg)
 		tt := time.Now().Add(tlsHandshakeTimeout)
 		if err := c.SetDeadline(tt); err != nil {
-			return nil, "", err
+			return nil, err
 		}
 		if err := c.(*tls.Conn).Handshake(); err != nil { // Do handshake manually before ztcp build connection.
-			return nil, "", err
+			return nil, err
 		}
 		if err := c.SetDeadline(time.Time{}); err != nil { // Reset deadline because conn will be reused.
-			return nil, "", err
+			return nil, err
 		}
 	}
-	return c, c.RemoteAddr().String(), nil
+	return c, nil
 }
 
 func (ln *defaultListener) Close() error {

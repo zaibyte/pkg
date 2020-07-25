@@ -41,9 +41,7 @@ package ztcp
 
 import (
 	"fmt"
-	"io"
 	"log"
-	"net"
 	"sync"
 	"time"
 )
@@ -67,21 +65,6 @@ const (
 	// DefaultBufferSize is the default size for Client and Server buffers.
 	DefaultBufferSize = 64 * 1024
 )
-
-// OnConnectFunc is a callback, which may be called by both Client and Server
-// on every connection creation if assigned
-// to Client.OnConnect / Server.OnConnect.
-//
-// remoteAddr is the address of the remote end for the established
-// connection rwc.
-//
-// The callback must return either rwc itself or a rwc wrapper.
-// The returned connection wrapper MUST send all the data to the underlying
-// rwc on every Write() call, otherwise the connection will hang forever.
-//
-// The callback may be used for authentication/authorization and/or custom
-// transport wrapping.
-type OnConnectFunc func(remoteAddr string, rwc io.ReadWriteCloser) (net.Conn, error)
 
 // LoggerFunc is an error logging function to pass to ztcp.SetErrorLogger().
 type LoggerFunc func(format string, args ...interface{})
