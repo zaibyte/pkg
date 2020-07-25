@@ -89,7 +89,9 @@ func (w *withMessage) Error() string { return w.msg + ": " + w.cause.Error() }
 //		Unwrap() error
 //	}
 // Provides compatibility for Go 1.13 error chains.
-func (w *withMessage) Unwrap() error { return w.cause }
+func (w *withMessage) Unwrap() error {
+	return w.cause
+}
 
 func (w *withMessage) Format(s fmt.State, verb rune) {
 	switch verb {
