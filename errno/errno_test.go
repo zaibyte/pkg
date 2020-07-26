@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package zrpc
+package errno
 
 import (
 	"errors"
@@ -49,6 +49,18 @@ func TestErrToErrno(t *testing.T) {
 
 	err := errors.New("new error")
 	assert.Equal(t, Errno(InternalServerError), ErrToErrno(err))
+}
+
+func TestUnitErrno(t *testing.T) {
+	var i uint16
+	for i = 0; i < 3; i++ {
+		err := Errno(i)
+		ii := uint16(err)
+		assert.Equal(t, i, ii)
+
+		err2 := Errno(ii)
+		assert.Equal(t, err, err2)
+	}
 }
 
 func BenchmarkErrno_Error(b *testing.B) {

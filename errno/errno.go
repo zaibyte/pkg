@@ -12,17 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package zerrors provides errors number for indicating error.
-// Saving network I/O and marshal & unmarshal cost in RPC.
+// Package errno provides error numbers for indicating errors.
+// Saving network I/O and marshal & unmarshal cost in RPC between Zai and ZBuf/ZCold.
 //
 // We don't need to support all error types, because any error should be
 // logged in where it raises. For the client, it just need
 // to know there is an error in the request, and what the type it is.
-package zrpc
+//
+// There are two major types of errno:
+// 1. Server side
+// Not found error & internal server error.
+// Not found: means there is no need to retry, so it's important.
+// Other errors could be combined as internal server error.
+//
+// 2. Client side
+// Bad request, not implemented*, canceled, timeout, too many request*, connection error
+// Bad request: could happen when there is an illegal request.
+// Not implemented: request a method which is not found.
+// For saving network cost, the method will be checked in client side.
+// (Client created by ztcp.Router will check method)
+// Connection error means network issues.
 
-import (
-	"errors"
-)
+package errno
+
+import "errors"
 
 // An Errno is an unsigned number describing an error condition.
 // It implements the error interface. The zero Errno is by convention
@@ -31,7 +44,6 @@ import (
 //	if errno != 0 {
 //		err = errno
 //	}
-//
 type Errno uint16
 
 func (e Errno) Error() string {
@@ -94,3 +106,14 @@ var errnoStr = [...]string{
 	ConnectionError:     "connection error",
 	Canceled:            "canceled",
 }
+
+var (
+	ErrBadRequest          = Errno(BadRequest)
+	ErrNotFound            = Errno(NotFound) // When server side raises a not found error, using this variable.
+	ErrNotImplemented      = Errno(NotImplemented)
+	ErrTimeout             = Errno(Timeout)
+	ErrTooManyRequests     = Errno(TooManyRequests)
+	ErrInternalServerError = Errno(InternalServerError)
+	ErrConnectionError     = Errno(ConnectionError)
+	ErrCanceled            = Errno(Canceled)
+)
