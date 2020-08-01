@@ -32,7 +32,7 @@ const (
 	// of this object to Zai.
 	// That's because too big file may block other read/write ops
 	// and the cost of retries is higher.
-	MaxObjSize = 4 * mb
+	MaxObjSize = 8 * mb
 
 	// MntRoot
 	MntRoot = "/zai" // Disk device mount path.
