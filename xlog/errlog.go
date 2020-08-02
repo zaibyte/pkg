@@ -104,7 +104,7 @@ func DefaultEncoderConfig() zapcore.EncoderConfig {
 		ReqIDKey:       "reqid",
 		LineEnding:     zapcore.DefaultLineEnding,
 		EncodeLevel:    zapcore.LowercaseLevelEncoder,
-		EncodeTime:     zapcore.EpochMillisTimeEncoder,
+		EncodeTime:     zapcore.EpochNanosTimeEncoder,
 		EncodeDuration: zapcore.StringDurationEncoder,
 	}
 }
