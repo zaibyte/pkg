@@ -39,79 +39,62 @@ import (
 	"github.com/zaibyte/pkg/xdigest"
 )
 
-const requestHeaderSize = 34
+const reqHeaderSize = 25
 
-type requestHeader struct {
-	method   uint16 // [0, 2)
-	msgID    uint64 // [2, 10)
-	mreqSize uint32 // [10, 14)
-	extSize  uint32 // [14, 18)
-	reqid    uint64 // [18, 26)
-	hcrc     uint32 // [26, 30), Header CRC.
-	crc      uint32 // [30, 34)
+// reqHeader is the header for request.
+type reqHeader struct {
+	method   uint8  // [0, 1)
+	msgID    uint64 // [1, 9)
+	reqid    uint64 // [9, 17)
+	bodySize uint32 // [17, 21)
+	crc      uint32 // [21, 25)
 }
 
-// method: [1, 256)
-const (
-	maxMethod uint16 = 255 // method must <= maxMethod.
-
-	objPutMethod uint16 = 1
-	objGetMethod uint16 = 2
-	objDelMethod uint16 = 3
-)
-
-func (h *requestHeader) encode(buf []byte) []byte {
-	if len(buf) < requestHeaderSize {
+func (h *reqHeader) encode(buf []byte) []byte {
+	if len(buf) < reqHeaderSize {
 		panic("input buf too small")
 	}
-	binary.BigEndian.PutUint16(buf[0:2], h.method)
-	binary.BigEndian.PutUint64(buf[2:10], h.msgID)
-	binary.BigEndian.PutUint32(buf[10:14], h.mreqSize)
-	binary.BigEndian.PutUint32(buf[14:18], h.extSize)
-	binary.BigEndian.PutUint64(buf[18:26], h.reqid)
-	binary.BigEndian.PutUint32(buf[26:30], 0)
-	binary.BigEndian.PutUint32(buf[30:34], h.crc)
-	v := xdigest.Checksum(buf[:requestHeaderSize])
-	binary.BigEndian.PutUint32(buf[26:30], v)
-	return buf[:requestHeaderSize]
+	buf[0] = h.method
+	binary.BigEndian.PutUint64(buf[1:9], h.msgID)
+	binary.BigEndian.PutUint64(buf[9:17], h.reqid)
+	binary.BigEndian.PutUint32(buf[17:21], h.bodySize)
+	binary.BigEndian.PutUint32(buf[21:25], 0)
+	crc := xdigest.Checksum(buf[:reqHeaderSize])
+	binary.BigEndian.PutUint32(buf[21:25], crc)
+	h.crc = crc
+	return buf[:reqHeaderSize]
 }
 
-func (h *requestHeader) decode(buf []byte) error {
-	if len(buf) < requestHeaderSize {
-		return xrpc.ErrBadRequest
+func (h *reqHeader) decode(buf []byte) error {
+	if len(buf) < reqHeaderSize {
+		panic("input buf too small")
 	}
 
-	reqid := binary.BigEndian.Uint64(buf[18:26])
-
-	incoming := binary.BigEndian.Uint32(buf[26:30])
-	binary.BigEndian.PutUint32(buf[26:30], 0)
-	expected := xdigest.Checksum(buf[:requestHeaderSize])
+	incoming := binary.BigEndian.Uint32(buf[21:25])
+	binary.BigEndian.PutUint32(buf[21:25], 0)
+	expected := xdigest.Checksum(buf[:reqHeaderSize])
 	if incoming != expected {
 		return xrpc.ErrChecksumMismatch
 	}
-	binary.BigEndian.PutUint32(buf[26:30], incoming)
-	method := binary.BigEndian.Uint16(buf)
-	if method == 0 || method > maxMethod {
-		return xrpc.ErrInvalidMethod
-	}
-	h.method = method
-	h.msgID = binary.BigEndian.Uint64(buf[2:10])
-	h.mreqSize = binary.BigEndian.Uint32(buf[10:14])
-	h.extSize = binary.BigEndian.Uint32(buf[14:18])
-	h.reqid = reqid
-	h.hcrc = incoming
-	h.crc = binary.BigEndian.Uint32(buf[30:34])
+	binary.BigEndian.PutUint32(buf[21:25], incoming)
+
+	h.method = buf[0]
+	h.msgID = binary.BigEndian.Uint64(buf[1:9])
+	h.reqid = binary.BigEndian.Uint64(buf[9:17])
+	h.bodySize = binary.BigEndian.Uint32(buf[17:21])
+	h.crc = incoming
+
 	return nil
 }
 
-const respHeaderSize = 22
+const respHeaderSize = 18
 
+// respHeader is the header for response.
 type respHeader struct {
 	msgID uint64 // [0, 8)
 	errno uint16 // [8, 10)
 	size  uint32 // [10, 14)
-	hcrc  uint32 // [14, 18), Header CRC.
-	crc   uint32 // [18, 22)
+	crc   uint32 // [14, 18)
 }
 
 func (h *respHeader) encode(buf []byte) []byte {
@@ -122,15 +105,15 @@ func (h *respHeader) encode(buf []byte) []byte {
 	binary.BigEndian.PutUint16(buf[8:10], h.errno)
 	binary.BigEndian.PutUint32(buf[10:14], h.size)
 	binary.BigEndian.PutUint32(buf[14:18], 0)
-	binary.BigEndian.PutUint32(buf[18:22], h.crc)
-	v := xdigest.Checksum(buf[:respHeaderSize])
-	binary.BigEndian.PutUint32(buf[14:18], v)
+	crc := xdigest.Checksum(buf[:respHeaderSize])
+	binary.BigEndian.PutUint32(buf[14:18], crc)
+	h.crc = crc
 	return buf[:respHeaderSize]
 }
 
 func (h *respHeader) decode(buf []byte) error {
 	if len(buf) < respHeaderSize {
-		return xrpc.ErrBadRequest
+		panic("input buf too small")
 	}
 
 	incoming := binary.BigEndian.Uint32(buf[14:18])
@@ -144,14 +127,6 @@ func (h *respHeader) decode(buf []byte) error {
 	h.msgID = binary.BigEndian.Uint64(buf[0:8])
 	h.errno = binary.BigEndian.Uint16(buf[8:10])
 	h.size = binary.BigEndian.Uint32(buf[10:14])
-	h.hcrc = incoming
-	h.crc = binary.BigEndian.Uint32(buf[18:22])
+	h.crc = incoming
 	return nil
-}
-
-func (h *respHeader) reset() {
-	h.msgID = 0
-	h.size = 0
-	h.hcrc = 0
-	h.crc = 0
 }
