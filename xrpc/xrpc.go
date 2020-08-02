@@ -12,41 +12,42 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package xtcp
+package xrpc
 
 import (
-	"math/rand"
-	"testing"
-
-	"github.com/templexxx/tsc"
+	"io"
+	"time"
 )
 
-func TestRouter_AddFunc(t *testing.T) {
-	r := NewRouter()
+type PutObjReq struct {
+	GroupID uint16
+	TS      uint32
+	Digest  uint32
+	Size    uint32
+	Otype   uint8
+}
 
-	has := make([]uint8, 127)
-	rand.Seed(tsc.UnixNano())
-	allInt := rand.Perm(256)
-	for i := 0; i < 127; i++ {
-		has[i] = uint8(allInt[i])
-	}
+type GetObjReq struct {
+	GroupID uint16
+	TS      uint32
+	Digest  uint32
+}
 
-	for i := range has {
-		if has[i] == 0 {
-			continue
-		}
-		err := r.AddFunc(has[i], bytesHandlerFunc)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
+type DelObjReq struct {
+	GroupID uint16
+	TS      uint32
+	Digest  uint32
+}
 
-	for i := range has {
-		if has[i] == 0 {
-			continue
-		}
-		if !r.methods.has(has[i]) {
-			t.Fatal("method should have", has[i])
-		}
-	}
+type Client interface {
+	Start() error
+	Stop() error
+	PutObj(reqid uint64, req *PutObjReq, obj []byte, timeout time.Duration) error
+	GetObj(reqid uint64, req *GetObjReq, timeout time.Duration) (obj io.ReadCloser, err error)
+	DelObj(reqid uint64, req *DelObjReq, timeout time.Duration) error
+}
+
+type Server interface {
+	Start() error
+	Stop() error
 }
