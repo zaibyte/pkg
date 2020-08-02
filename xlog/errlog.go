@@ -17,6 +17,8 @@
 package xlog
 
 import (
+	"fmt"
+
 	"github.com/zaibyte/nanozap"
 	"github.com/zaibyte/nanozap/zapcore"
 	"github.com/zaibyte/nanozap/zaproll"
@@ -138,27 +140,27 @@ func (l *ErrorLogger) Panic(reqid uint64, msg string) {
 }
 
 func (l *ErrorLogger) Errorf(reqid uint64, format string, args ...interface{}) {
-	l.Logger.Errorf(reqid, format, args)
+	l.Logger.Error(reqid, fmt.Sprintf(format, args...))
 }
 
 func (l *ErrorLogger) Infof(reqid uint64, format string, args ...interface{}) {
-	l.Logger.Infof(reqid, format, args)
+	l.Logger.Info(reqid, fmt.Sprintf(format, args...))
 }
 
 func (l *ErrorLogger) Warnf(reqid uint64, format string, args ...interface{}) {
-	l.Logger.Warnf(reqid, format, args)
+	l.Logger.Warn(reqid, fmt.Sprintf(format, args...))
 }
 
 func (l *ErrorLogger) Debugf(reqid uint64, format string, args ...interface{}) {
-	l.Logger.Debugf(reqid, format, args)
+	l.Logger.Debug(reqid, fmt.Sprintf(format, args...))
 }
 
 func (l *ErrorLogger) Fatalf(reqid uint64, format string, args ...interface{}) {
-	l.Logger.Fatalf(reqid, format, args)
+	l.Logger.Fatal(reqid, fmt.Sprintf(format, args...))
 }
 
 func (l *ErrorLogger) Panicf(reqid uint64, format string, args ...interface{}) {
-	l.Logger.Panicf(reqid, format, args)
+	l.Logger.Panic(reqid, fmt.Sprintf(format, args...))
 }
 
 // Sync syncs ErrorLogger.

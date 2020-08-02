@@ -16,6 +16,8 @@
 
 package xlog
 
+import "fmt"
+
 var (
 	_global *ErrorLogger
 )
@@ -57,27 +59,27 @@ func Panic(msg string) {
 }
 
 func Errorf(format string, args ...interface{}) {
-	_global.Errorf(0, format, args)
+	_global.Error(0, fmt.Sprintf(format, args...))
 }
 
 func Infof(format string, args ...interface{}) {
-	_global.Infof(0, format, args)
+	_global.Info(0, fmt.Sprintf(format, args...))
 }
 
 func Warnf(format string, args ...interface{}) {
-	_global.Warnf(0, format, args)
+	_global.Warn(0, fmt.Sprintf(format, args...))
 }
 
 func Debugf(format string, args ...interface{}) {
-	_global.Debugf(0, format, args)
+	_global.Debug(0, fmt.Sprintf(format, args...))
 }
 
 func Fatalf(format string, args ...interface{}) {
-	_global.Fatalf(0, format, args)
+	_global.Fatal(0, fmt.Sprintf(format, args...))
 }
 
 func Panicf(format string, args ...interface{}) {
-	_global.Panicf(0, format, args)
+	_global.Panic(0, fmt.Sprintf(format, args...))
 }
 
 func ErrorID(reqid uint64, msg string) {
@@ -105,27 +107,27 @@ func PanicID(reqid uint64, msg string) {
 }
 
 func ErrorIDf(reqid uint64, format string, args ...interface{}) {
-	_global.Errorf(reqid, format, args)
+	_global.Error(reqid, fmt.Sprintf(format, args...))
 }
 
 func InfoIDf(reqid uint64, format string, args ...interface{}) {
-	_global.Infof(reqid, format, args)
+	_global.Info(reqid, fmt.Sprintf(format, args...))
 }
 
 func WarnIDf(reqid uint64, format string, args ...interface{}) {
-	_global.Warnf(reqid, format, args)
+	_global.Warn(reqid, fmt.Sprintf(format, args...))
 }
 
 func DebugIDf(reqid uint64, format string, args ...interface{}) {
-	_global.Debugf(reqid, format, args)
+	_global.Debug(reqid, fmt.Sprintf(format, args...))
 }
 
 func FatalIDf(reqid uint64, format string, args ...interface{}) {
-	_global.Fatalf(reqid, format, args)
+	_global.Fatal(reqid, fmt.Sprintf(format, args...))
 }
 
 func PanicIDf(reqid uint64, format string, args ...interface{}) {
-	_global.Panicf(reqid, format, args)
+	_global.Panic(reqid, fmt.Sprintf(format, args...))
 }
 
 // Sync syncs _global.
