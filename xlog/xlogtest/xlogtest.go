@@ -19,18 +19,23 @@ package xlogtest
 
 import (
 	"io/ioutil"
+	"os"
 
 	"github.com/zaibyte/nanozap"
 	"github.com/zaibyte/nanozap/zapcore"
 	"github.com/zaibyte/pkg/xlog"
 )
 
+func init() {
+	New()
+}
+
 // New init global logger with stdout.
 func New() {
 
 	lvl := nanozap.NewAtomicLevel()
 	lvl.SetLevel(zapcore.InfoLevel)
-	core := zapcore.NewCore(zapcore.NewJSONEncoder(xlog.DefaultEncoderConfig()), &Discarder{}, lvl)
+	core := zapcore.NewCore(zapcore.NewJSONEncoder(xlog.DefaultEncoderConfig()), &Stdouter{}, lvl)
 
 	el := &xlog.ErrorLogger{
 		Logger:   nanozap.New(core),
@@ -69,6 +74,14 @@ type Discarder struct{ Syncer }
 // Write implements io.Writer.
 func (d *Discarder) Write(b []byte) (int, error) {
 	return ioutil.Discard.Write(b)
+}
+
+type Stdouter struct {
+	Syncer
+}
+
+func (s *Stdouter) Write(b []byte) (int, error) {
+	return os.Stdout.Write(b)
 }
 
 // Close closes logger.
