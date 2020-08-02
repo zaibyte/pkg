@@ -42,13 +42,13 @@ import (
 const requestHeaderSize = 34
 
 type requestHeader struct {
-	method    uint16 // [0, 2)
-	msgID     uint64 // [2, 10)
-	reqSize   uint32 // [10, 14)
-	extraSize uint32 // [14, 18)
-	reqid     uint64 // [18, 26)
-	hcrc      uint32 // [26, 30), Header CRC.
-	crc       uint32 // [30, 34)
+	method   uint16 // [0, 2)
+	msgID    uint64 // [2, 10)
+	mreqSize uint32 // [10, 14)
+	extSize  uint32 // [14, 18)
+	reqid    uint64 // [18, 26)
+	hcrc     uint32 // [26, 30), Header CRC.
+	crc      uint32 // [30, 34)
 }
 
 // method: [1, 256)
@@ -66,8 +66,8 @@ func (h *requestHeader) encode(buf []byte) []byte {
 	}
 	binary.BigEndian.PutUint16(buf[0:2], h.method)
 	binary.BigEndian.PutUint64(buf[2:10], h.msgID)
-	binary.BigEndian.PutUint32(buf[10:14], h.reqSize)
-	binary.BigEndian.PutUint32(buf[14:18], h.extraSize)
+	binary.BigEndian.PutUint32(buf[10:14], h.mreqSize)
+	binary.BigEndian.PutUint32(buf[14:18], h.extSize)
 	binary.BigEndian.PutUint64(buf[18:26], h.reqid)
 	binary.BigEndian.PutUint32(buf[26:30], 0)
 	binary.BigEndian.PutUint32(buf[30:34], h.crc)
@@ -96,8 +96,8 @@ func (h *requestHeader) decode(buf []byte) error {
 	}
 	h.method = method
 	h.msgID = binary.BigEndian.Uint64(buf[2:10])
-	h.reqSize = binary.BigEndian.Uint32(buf[10:14])
-	h.extraSize = binary.BigEndian.Uint32(buf[14:18])
+	h.mreqSize = binary.BigEndian.Uint32(buf[10:14])
+	h.extSize = binary.BigEndian.Uint32(buf[14:18])
 	h.reqid = reqid
 	h.hcrc = incoming
 	h.crc = binary.BigEndian.Uint32(buf[30:34])
@@ -107,11 +107,11 @@ func (h *requestHeader) decode(buf []byte) error {
 const respHeaderSize = 22
 
 type respHeader struct {
-	msgID    uint64 // [0, 8)
-	errno    uint16 // [8, 10)
-	respSize uint32 // [10, 14)
-	hcrc     uint32 // [14, 18), Header CRC.
-	crc      uint32 // [18, 22)
+	msgID uint64 // [0, 8)
+	errno uint16 // [8, 10)
+	size  uint32 // [10, 14)
+	hcrc  uint32 // [14, 18), Header CRC.
+	crc   uint32 // [18, 22)
 }
 
 func (h *respHeader) encode(buf []byte) []byte {
@@ -120,7 +120,7 @@ func (h *respHeader) encode(buf []byte) []byte {
 	}
 	binary.BigEndian.PutUint64(buf[0:8], h.msgID)
 	binary.BigEndian.PutUint16(buf[8:10], h.errno)
-	binary.BigEndian.PutUint32(buf[10:14], h.respSize)
+	binary.BigEndian.PutUint32(buf[10:14], h.size)
 	binary.BigEndian.PutUint32(buf[14:18], 0)
 	binary.BigEndian.PutUint32(buf[18:22], h.crc)
 	v := xdigest.Checksum(buf[:respHeaderSize])
@@ -143,7 +143,7 @@ func (h *respHeader) decode(buf []byte) error {
 
 	h.msgID = binary.BigEndian.Uint64(buf[0:8])
 	h.errno = binary.BigEndian.Uint16(buf[8:10])
-	h.respSize = binary.BigEndian.Uint32(buf[10:14])
+	h.size = binary.BigEndian.Uint32(buf[10:14])
 	h.hcrc = incoming
 	h.crc = binary.BigEndian.Uint32(buf[18:22])
 	return nil
@@ -151,7 +151,7 @@ func (h *respHeader) decode(buf []byte) error {
 
 func (h *respHeader) reset() {
 	h.msgID = 0
-	h.respSize = 0
+	h.size = 0
 	h.hcrc = 0
 	h.crc = 0
 }

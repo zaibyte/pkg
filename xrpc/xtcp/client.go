@@ -129,7 +129,7 @@ type Client struct {
 
 	encrypted bool
 
-	router *Router
+	methods *bitmap
 
 	requestsChan chan *AsyncResult
 
@@ -151,7 +151,7 @@ type AsyncResult struct {
 	Error error
 
 	request  xrpc.Marshaler
-	extraReq *xrpc.Buffer
+	extReq   *xrpc.Buffer
 	done     chan struct{}
 	canceled uint32
 }
@@ -249,28 +249,40 @@ func (c *Client) Stop() {
 
 // Call sends the given request to the server and obtains response
 // from the server.
+//
+// mainReq is the main request.
+// extReq is extent request, it's a *xrpc.Buffer for carrying binary avoiding unnecessary memory copy in Marshal process.
+// resp is the response.
+// In practice, these variables are xrpc.MarshalFreer.
+//
 // Returns non-nil error if the response cannot be obtained during
 // Client.RequestTimeout or server connection problems occur.
 //
 // Hint: use Router for distinct calls' construction.
 //
 // Don't forget starting the client with Client.Start() before calling Client.Call().
-func (c *Client) Call(reqid uint64, method uint8, request xrpc.Marshaler, extraReq *xrpc.Buffer, resp xrpc.Marshaler) (err error) {
-	return c.CallTimeout(reqid, method, request, extraReq, c.RequestTimeout, resp)
+func (c *Client) Call(reqid uint64, method uint8, mainReq, resp xrpc.Marshaler, extReq *xrpc.Buffer) (err error) {
+	return c.CallTimeout(reqid, method, mainReq, resp, extReq, c.RequestTimeout)
 }
 
 // CallTimeout sends the given request to the server and obtains response
 // from the server.
+//
+// mainReq is the main request.
+// extReq is extent request, it's often as binary carrier.
+// resp is the response.
+// In practice, these variables are xrpc.MarshalFreer.
+//
 // Returns non-nil error if the response cannot be obtained during
 // Client.RequestTimeout or server connection problems occur.
 //
 // Hint: use Router for distinct calls' construction.
 //
 // Don't forget starting the client with Client.Start() before calling Client.Call().
-func (c *Client) CallTimeout(reqid uint64, method uint8, request xrpc.Marshaler, extraReq *xrpc.Buffer, timeout time.Duration, resp xrpc.Marshaler) (err error) {
+func (c *Client) CallTimeout(reqid uint64, method uint8, mainReq, resp xrpc.Marshaler, extReq *xrpc.Buffer, timeout time.Duration) (err error) {
 
 	var ar *AsyncResult
-	if ar, err = c.callAsync(reqid, method, request, extraReq, resp); err != nil {
+	if ar, err = c.callAsync(reqid, method, mainReq, resp, extReq); err != nil {
 		return err
 	}
 
@@ -278,7 +290,7 @@ func (c *Client) CallTimeout(reqid uint64, method uint8, request xrpc.Marshaler,
 
 	select {
 	case <-ar.Done:
-		err = ar.Error
+		resp, err = ar.Response, ar.Error
 		releaseAsyncResult(ar)
 	case <-t.C:
 		ar.Cancel()
@@ -289,22 +301,22 @@ func (c *Client) CallTimeout(reqid uint64, method uint8, request xrpc.Marshaler,
 	return
 }
 
-func (c *Client) callAsync(reqid uint64, method uint8, request xrpc.Marshaler, extraReq *xrpc.Buffer, resp xrpc.Marshaler) (ar *AsyncResult, err error) {
+func (c *Client) callAsync(reqid uint64, method uint8, mainReq, resp xrpc.Marshaler, extReq *xrpc.Buffer) (ar *AsyncResult, err error) {
 
 	if reqid == 0 {
 		reqid = uid.MakeReqID()
 	}
 
-	if c.router.handlers[method] == nil {
+	if !c.methods.has(method) {
 		return nil, xrpc.ErrNotImplemented
 	}
 
 	ar = acquireAsyncResult()
 	ar.ReqID = reqid
-	ar.Method = uint16(method)
-	ar.request = request
+	ar.Method = uint16(method) // Keeping same as method type in requestHeader.
+	ar.request = mainReq
 	ar.Response = resp
-	ar.extraReq = extraReq
+	ar.extReq = extReq
 	ar.done = make(chan struct{})
 	ar.Done = ar.done
 
@@ -387,6 +399,20 @@ func clientHandler(c *Client) {
 func clientHandleConnection(c *Client, conn net.Conn) {
 
 	var err error
+
+	err = conn.SetWriteDeadline(time.Now().Add(handshakeDuration))
+	if err != nil {
+		xlog.Errorf("failed to set handshake deadline to: %s: %s", c.Addr, err)
+		conn.Close()
+		return
+	}
+	_, err = conn.Write(handshake[:])
+	if err != nil {
+		xlog.Errorf("failed to handshake to: %s: %s", c.Addr, err)
+		conn.Close()
+		return
+	}
+
 	stopChan := make(chan struct{})
 
 	pendingRequests := make(map[uint64]*AsyncResult)
@@ -416,7 +442,13 @@ func clientHandleConnection(c *Client, conn net.Conn) {
 
 	for _, ar := range pendingRequests {
 		ar.Error = err
-		close(ar.done)
+		if err != nil {
+			xlog.Error(err.Error())
+
+		}
+		if ar.done != nil {
+			close(ar.done)
+		}
 	}
 }
 
@@ -489,16 +521,16 @@ func sendRequest(c *Client, w net.Conn, ar *AsyncResult, msgID uint64, headerBuf
 		}
 	}
 	var extraN int
-	if ar.extraReq != nil {
-		extraN = ar.extraReq.Len()
+	if ar.extReq != nil {
+		extraN = ar.extReq.Len()
 	}
 
 	h := &requestHeader{
-		method:    ar.Method,
-		msgID:     msgID,
-		reqSize:   uint32(n),
-		extraSize: uint32(extraN),
-		reqid:     ar.ReqID,
+		method:   ar.Method,
+		msgID:    msgID,
+		mreqSize: uint32(n),
+		extSize:  uint32(extraN),
+		reqid:    ar.ReqID,
 	}
 
 	var buf []byte
@@ -520,8 +552,8 @@ func sendRequest(c *Client, w net.Conn, ar *AsyncResult, msgID uint64, headerBuf
 	if !c.encrypted {
 		crc := crc32.New(xdigest.CrcTbl)
 		crc.Write(buf)
-		if ar.extraReq != nil {
-			crc.Write(ar.extraReq.Bytes())
+		if ar.extReq != nil {
+			crc.Write(ar.extReq.Bytes())
 		}
 		h.crc = crc.Sum32()
 	}
@@ -547,7 +579,7 @@ func sendRequest(c *Client, w net.Conn, ar *AsyncResult, msgID uint64, headerBuf
 	}
 
 	if n != 0 {
-		err = sendBytes(ar.ReqID, c.Addr, w, buf, c.SendBufferSize)
+		err = clientSendBytes(ar.ReqID, c.Addr, w, buf, c.SendBufferSize)
 		if err != nil {
 			err = xrpc.ErrConnection
 			return
@@ -555,7 +587,7 @@ func sendRequest(c *Client, w net.Conn, ar *AsyncResult, msgID uint64, headerBuf
 	}
 
 	if extraN != 0 {
-		err = sendBytes(ar.ReqID, c.Addr, w, ar.extraReq.Bytes(), c.SendBufferSize)
+		err = clientSendBytes(ar.ReqID, c.Addr, w, ar.extReq.Bytes(), c.SendBufferSize)
 		if err != nil {
 			err = xrpc.ErrConnection
 			return
@@ -565,7 +597,7 @@ func sendRequest(c *Client, w net.Conn, ar *AsyncResult, msgID uint64, headerBuf
 	return nil
 }
 
-func sendBytes(reqid uint64, addr string, w net.Conn, buf []byte, bufSize int) (err error) {
+func clientSendBytes(reqid uint64, addr string, w net.Conn, buf []byte, bufSize int) (err error) {
 
 	sent := 0
 	var tt time.Time
@@ -585,7 +617,7 @@ func sendBytes(reqid uint64, addr string, w net.Conn, buf []byte, bufSize int) (
 		sent += bufSize
 	}
 	if sent != len(buf) {
-		xlog.ErrorIDf(reqid, "unexpected sent size to %s: %d, buf want %d", addr, sent, len(buf))
+		xlog.ErrorIDf(reqid, "unexpected sent size to %s: %d, but want %d", addr, sent, len(buf))
 		return xrpc.ErrConnection
 	}
 	return nil
@@ -612,7 +644,7 @@ func clientReader(c *Client, r net.Conn, pendingRequests map[uint64]*AsyncResult
 			if err == xrpc.ErrTimeout {
 				continue // Keeping trying to read response.
 			}
-			xlog.Errorf("failed to read magic number from %s: %s", c.Addr, err)
+			xlog.Errorf("failed to read magic number from %s: %s", c.Addr, err.Error())
 			return
 		}
 
@@ -642,32 +674,28 @@ func clientReader(c *Client, r net.Conn, pendingRequests map[uint64]*AsyncResult
 			continue // Ignore response if any error. And the response must be nil.
 		}
 
-		isNop := c.router.isNopResp(uint8(ar.Method))
-
-		n := header.respSize
+		n := header.size
 		if n == 0 {
-			if !isNop {
-				xlog.ErrorID(ar.ReqID, "invalid response length")
-				err = xrpc.ErrInternalServer
-				ar.Error = err
-				close(ar.done)
-				return
-			} else {
-				close(ar.done) // NopResp. Returns a nil response.
-				continue
-			}
+			close(ar.done)
+			continue
+		}
+
+		if ar.Response == nil {
+			xlog.ErrorID(ar.ReqID, "response is nil, but has non-zero content")
+			ar.Error = xrpc.ErrInternalServer
+			close(ar.done)
+			continue
 		}
 
 		var buf []byte
-		resp := ar.Response
-		if c.router.isBytesResp(uint8(ar.Method)) {
-			buf, _ = resp.MarshalTo(nil) // No side effect when it's a *xprc.Buffer.
-		} else {
-			if header.respSize > uint32(len(payload)) {
+		if _, ok = ar.Response.(*xrpc.Buffer); !ok {
+			if n > uint32(len(payload)) {
 				buf = make([]byte, n)
 			} else {
 				buf = payload[:n]
 			}
+		} else {
+			buf = ar.Response.(*xrpc.Buffer).Bytes()[:n]
 		}
 
 		received := uint32(0)
@@ -722,7 +750,11 @@ func clientReader(c *Client, r net.Conn, pendingRequests map[uint64]*AsyncResult
 			return
 		}
 
-		err = resp.UnmarshalBinary(buf)
+		if _, ok = ar.Response.(*xrpc.Buffer); ok {
+			ar.Response.(*xrpc.Buffer).BS = buf
+		}
+
+		err = ar.Response.UnmarshalBinary(buf)
 		if err != nil {
 			xlog.ErrorIDf(ar.ReqID, "cannot decode response: %s", err.Error())
 			err = xrpc.ErrInternalServer

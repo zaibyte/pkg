@@ -19,7 +19,10 @@ import "sync"
 var (
 	_bufferPool = newBufferPool()
 	// GetBytes retrieves a buffer from the buffer pool, creating one if necessary.
-	GetBytes = _bufferPool.Get // TODO two types pool, one for small(req), one for big(resp).
+	GetBytes = _bufferPool.Get
+
+	_bigbufferPool = newBigBufferPool()
+	GetBigBytes    = _bigbufferPool.Get()
 )
 
 // A bufferPool is a type-safe wrapper around a sync.bufferPool.
@@ -31,7 +34,16 @@ type bufferPool struct {
 func newBufferPool() bufferPool {
 	return bufferPool{p: &sync.Pool{
 		New: func() interface{} {
-			return &Buffer{bs: make([]byte, 0, _size)}
+			return &Buffer{BS: make([]byte, 0, _size)}
+		},
+	}}
+}
+
+// newBigBufferPool constructs a new bufferPool with a bigger buffer.
+func newBigBufferPool() bufferPool {
+	return bufferPool{p: &sync.Pool{
+		New: func() interface{} {
+			return &Buffer{BS: make([]byte, 0, _bigsize)}
 		},
 	}}
 }

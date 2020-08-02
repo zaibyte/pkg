@@ -45,7 +45,6 @@ import (
 	"hash/crc32"
 	"io"
 	"net"
-	"reflect"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -75,17 +74,12 @@ const (
 	// DefaultConcurrency is the default number of concurrent rpc calls
 	// the server can process.
 	DefaultConcurrency = 8 * 1024
-
-	// DefaultServerSendPayloadSize is the default size for Client write payload buffers.
-	DefaultServerSendPayloadSize = 512 * 1024
-
-	// DefaultServerRecvPayloadSize is the default size for Client read payload buffers.
-	DefaultServerRecvPayloadSize = 1024
-
 	// DefaultServerSendBufferSize is the default size for Server send buffers.
 	DefaultServerSendBufferSize = 64 * 1024
 	// DefaultServerRecvBufferSize is the default size for Server receive buffers.
 	DefaultServerRecvBufferSize = 64 * 1024
+	// DefaultServerSendPayloadSize is the default size for Client write payload buffers.
+	DefaultServerSendPayloadSize = 512 * 1024
 )
 
 // Server implements RPC server.
@@ -128,13 +122,7 @@ type Server struct {
 	// Default is DefaultBufferSize.
 	RecvBufferSize int
 
-	// Size of Client write payload in bytes.
-	// Default value is DefaultServerSendPayloadSize.
 	SendPayloadSize int
-
-	// Size of Client read payload in bytes.
-	// Default value is DefaultServerRecvPayloadSize.
-	RecvPayloadSize int
 
 	// The server obtains new client connections via Listener.Accept().
 	//
@@ -182,9 +170,6 @@ func (s *Server) Start() error {
 	if s.SendPayloadSize <= 0 {
 		s.SendPayloadSize = DefaultServerSendPayloadSize
 	}
-	if s.RecvPayloadSize <= 0 {
-		s.RecvPayloadSize = DefaultServerRecvPayloadSize
-	}
 
 	if s.Listener == nil {
 		s.Listener = &defaultListener{}
@@ -230,6 +215,7 @@ func serverHandler(s *Server, workersCh chan struct{}) {
 		acceptChan := make(chan struct{})
 		go func() {
 			if conn, err = s.Listener.Accept(); err != nil {
+				xlog.Error(err.Error())
 				if stopping.Load() == nil {
 					xlog.Errorf("cannot accept new connection: %s", err)
 				}
@@ -263,6 +249,36 @@ func serverHandler(s *Server, workersCh chan struct{}) {
 func serverHandleConnection(s *Server, conn net.Conn, workersCh chan struct{}) {
 	defer s.stopWg.Done()
 
+	var stopping atomic.Value
+	var err error
+
+	okHandshake := make(chan bool, 1)
+	go func() {
+		var buf [1]byte
+		if _, err = conn.Read(buf[:]); err != nil {
+			if stopping.Load() == nil {
+				xlog.Errorf("failed to reading handshake from client: %s: %s", conn.RemoteAddr().String(), err)
+			}
+		}
+		okHandshake <- buf[0] == 1
+	}()
+
+	select {
+	case ok := <-okHandshake:
+		if !ok {
+			conn.Close()
+			return
+		}
+	case <-s.serverStopChan:
+		stopping.Store(true)
+		conn.Close()
+		return
+	case <-time.After(10 * time.Second):
+		xlog.Errorf("cannot obtain handshake from client:%s during 10s", conn.RemoteAddr().String())
+		conn.Close()
+		return
+	}
+
 	responsesChan := make(chan *serverMessage, s.PendingResponses)
 	stopChan := make(chan struct{})
 
@@ -290,13 +306,13 @@ func serverHandleConnection(s *Server, conn net.Conn, workersCh chan struct{}) {
 }
 
 type serverMessage struct {
-	Method   uint16
-	MsgID    uint64
-	ReqID    uint64
-	Request  xrpc.Marshaler
-	ExtraReq *xrpc.Buffer
-	Response xrpc.Marshaler
-	Error    error
+	Method     uint16
+	MsgID      uint64
+	ReqID      uint64
+	Request    *xrpc.Buffer
+	MainReqLen int
+	Response   xrpc.MarshalFreer
+	Error      error
 }
 
 var serverMessagePool = &sync.Pool{
@@ -309,11 +325,11 @@ func (s *serverMessage) reset() {
 	s.Method = 0
 	s.MsgID = 0
 	s.ReqID = 0
-	s.Request = nil
-	if s.ExtraReq != nil {
-		s.ExtraReq.Free()
+	if s.Request != nil {
+		s.Request.Free()
 	}
-	s.ExtraReq = nil
+	s.Request = nil
+	s.MainReqLen = 0
 	s.Response = nil
 	s.Error = nil
 }
@@ -329,7 +345,6 @@ func serverReader(s *Server, r net.Conn, responsesChan chan<- *serverMessage,
 	}()
 
 	magicNum := make([]byte, len(magicNumber))
-	payload := make([]byte, s.RecvPayloadSize) // TODO can't use payload here, it will be polluted.
 	headerBuf := make([]byte, requestHeaderSize)
 
 	for {
@@ -338,7 +353,7 @@ func serverReader(s *Server, r net.Conn, responsesChan chan<- *serverMessage,
 			if err == xrpc.ErrTimeout {
 				continue // Keeping trying to read request.
 			}
-			xlog.Errorf("failed to read magic number from %s: %s", r.RemoteAddr().String(), err)
+			xlog.Errorf("failed to read magic number from client: %s: %s", r.RemoteAddr().String(), err.Error())
 			return
 		}
 
@@ -352,51 +367,37 @@ func serverReader(s *Server, r net.Conn, responsesChan chan<- *serverMessage,
 		m.Method = header.method
 		m.MsgID = header.msgID
 		m.ReqID = header.reqid
+		m.MainReqLen = int(header.mreqSize)
 
-		n := header.reqSize
-
-		var buf []byte
-		if n > uint32(len(payload)) {
-			buf = make([]byte, n) // TODO use a small byte slice pool?
+		var xbuf *xrpc.Buffer
+		if header.extSize > 32*1024-uint32(m.MainReqLen) {
+			xbuf = xrpc.GetBigBytes
 		} else {
-			buf = payload[:n] // TODO can't use payload here, because it'll be handled in another goroutine.
+			xbuf = xrpc.GetBytes()
 		}
 
 		crc := crc32.New(xdigest.CrcTbl)
 
-		err = readBytes(m.ReqID, r, buf, s.RecvBufferSize, s.encrypted, crc)
-		if err != nil {
-			m.reset()
-			serverMessagePool.Put(m)
-			return
-		}
-		reqT := s.Router.reqTypes[m.Method]                       // TODO handle handles byte slice maybe a better idea?
-		req, ok := reflect.New(reqT).Interface().(xrpc.Marshaler) // TODO use pool to reducing GC.
-		if !ok {
-			xlog.ErrorID(m.ReqID, "invalid request type, not Marshaler")
-			m.reset()
-			serverMessagePool.Put(m)
-			return
-		}
-		err = req.UnmarshalBinary(buf)
-		if err != nil {
-			xlog.ErrorIDf(m.ReqID, "cannot decode request: %s", err.Error())
-			m.reset()
-			serverMessagePool.Put(m)
-			return
-		}
-		m.Request = req
-
-		if header.extraSize != 0 {
-			ext := xrpc.GetBytes()
-			err = readBytes(m.ReqID, r, ext.Bytes(), s.RecvBufferSize, s.encrypted, crc)
+		if m.MainReqLen != 0 {
+			err = readBytes(m.ReqID, r, xbuf.Bytes()[:m.MainReqLen], s.RecvBufferSize, s.encrypted, crc)
 			if err != nil {
 				m.reset()
 				serverMessagePool.Put(m)
 				return
 			}
-			m.ExtraReq = ext
 		}
+
+		if header.extSize != 0 {
+			err = readBytes(m.ReqID, r, xbuf.Bytes()[m.MainReqLen:m.MainReqLen+int(header.extSize)], s.RecvBufferSize, s.encrypted, crc)
+			if err != nil {
+				m.reset()
+				serverMessagePool.Put(m)
+				return
+			}
+		}
+
+		xbuf.BS = xbuf.Bytes()[:m.MainReqLen+int(header.extSize)]
+		m.Request = xbuf
 
 		if !s.encrypted {
 			incoming := crc.Sum32()
@@ -441,15 +442,15 @@ func readReqHeader(r net.Conn, headerBuf []byte) (header *requestHeader, err err
 	return
 }
 
-func readBytes(reqid uint64, r net.Conn, buf []byte, bufferSize int, encrypted bool, crc hash.Hash32) (err error) {
+func readBytes(reqid uint64, r net.Conn, buf []byte, readSize int, encrypted bool, crc hash.Hash32) (err error) {
 
 	n := len(buf)
 	received := 0
 	var recvBuf []byte
-	if n < bufferSize {
+	if n < readSize {
 		recvBuf = buf[:n]
 	} else {
-		recvBuf = buf[:bufferSize]
+		recvBuf = buf[:readSize]
 	}
 	toRead := n
 	tt := time.Now()
@@ -468,10 +469,10 @@ func readBytes(reqid uint64, r net.Conn, buf []byte, bufferSize int, encrypted b
 		}
 		toRead -= len(recvBuf)
 		received += len(recvBuf)
-		if toRead < bufferSize {
+		if toRead < readSize {
 			recvBuf = buf[received : received+toRead]
 		} else {
-			recvBuf = buf[received : received+bufferSize]
+			recvBuf = buf[received : received+readSize]
 		}
 	}
 	if received != n {
@@ -483,13 +484,10 @@ func readBytes(reqid uint64, r net.Conn, buf []byte, bufferSize int, encrypted b
 
 func serveRequest(s *Server, responsesChan chan<- *serverMessage, stopChan <-chan struct{}, m *serverMessage, workersCh <-chan struct{}) {
 	request := m.Request
-	ext := m.ExtraReq
+	response, err := callHandlerWithRecover(s.Router, m.ReqID, m.Method, request, m.MainReqLen)
+
+	m.Request.Free()
 	m.Request = nil
-	m.ExtraReq = nil
-
-	response, err := callHandlerWithRecover(s.Router, m.ReqID, m.Method, request, ext)
-
-	m.ExtraReq.Free()
 	m.Response = response
 	m.Error = err
 
@@ -507,7 +505,7 @@ func serveRequest(s *Server, responsesChan chan<- *serverMessage, stopChan <-cha
 	<-workersCh
 }
 
-func callHandlerWithRecover(router *Router, reqid uint64, method uint16, request xrpc.Marshaler, ext *xrpc.Buffer) (response xrpc.Marshaler, err error) {
+func callHandlerWithRecover(router *Router, reqid uint64, method uint16, request *xrpc.Buffer, mlen int) (response xrpc.MarshalFreer, err error) {
 	defer func() {
 		if x := recover(); x != nil {
 			stackTrace := make([]byte, 1<<20)
@@ -516,16 +514,12 @@ func callHandlerWithRecover(router *Router, reqid uint64, method uint16, request
 			xlog.ErrorID(reqid, err.Error())
 		}
 	}()
-	return router.Handle(reqid, uint8(method), request, ext)
+	return router.Handle(reqid, uint8(method), request, mlen)
 }
 
 func serverWriter(s *Server, w net.Conn, responsesChan <-chan *serverMessage, stopChan <-chan struct{}, done chan<- struct{}) {
 	defer func() { close(done) }()
 
-	e := newMessageEncoder(w, s.SendBufferSize)
-	defer e.Close()
-
-	var wr wireResponse
 	headerBuf := make([]byte, respHeaderSize)
 	payload := make([]byte, s.SendPayloadSize)
 	for {
@@ -543,94 +537,99 @@ func serverWriter(s *Server, w net.Conn, responsesChan <-chan *serverMessage, st
 			case m = <-responsesChan:
 			}
 
-			wr.ID = m.MsgID
-			wr.Response = m.Response
-			wr.Error = m.Error
+			msgID := m.MsgID
+			resp := m.Response
+			rerr := m.Error
+			reqid := m.ReqID
 
-			m.Response = nil
-			m.Error = ""
+			m.reset()
 			serverMessagePool.Put(m)
 
-			if err := e.Encode(wr); err != nil {
-				s.LogError("xtcp.Server: Cannot send response to wire: [%s]", err)
+			if err := sendResp(w, headerBuf, msgID, resp, rerr, s.encrypted, payload, s.SendBufferSize); err != nil {
+				xlog.ErrorIDf(reqid, "cannot send response to wire: %s", err)
 				return
 			}
-			wr.Response = nil
-			wr.Error = ""
-
+			resp.Free()
 		}
 	}
 }
 
-func sendResp(s *Server, w net.Conn, m *serverMessage, headerBuf, payload []byte) (err error) {
+func sendResp(w net.Conn, headerBuf []byte, msgID uint64, resp xrpc.Marshaler, rerr error,
+	encrypted bool, payload []byte, writeSize int) (err error) {
 
-	n, err := m.Response.MarshalLen()
+	n, err := resp.MarshalLen()
 	if err != nil {
-		xlog.ErrorIDf(m.ReqID, "request get marshal len failed: %s", err.Error())
-		err = xrpc.ErrBadRequest
 		return
 	}
 
-	// TODO if n == 0, it must be nop, if not return error
-
-	h := &respHeader{
-		msgID:    m.MsgID,
-		errno:    uint16(xrpc.ErrToErrno(m.Error)),
-		respSize: uint32(n),
+	h := &respHeader{ // TODO header pool
+		msgID: msgID,
+		errno: uint16(xrpc.ErrToErrno(rerr)),
+		size:  uint32(n),
 	}
 
 	var buf []byte
-	if s.Router.isBytesResp(uint8(m.Method)) {
-		// TODO how to reduce GC?
-	}
-	if len(payload) < n {
-		buf = make([]byte, n)
+	if _, ok := resp.(*xrpc.Buffer); !ok {
+		if n > len(payload) {
+			buf = make([]byte, n)
+		} else {
+			buf = payload[:n]
+		}
 	} else {
-		buf = payload[:n]
+		buf = resp.(*xrpc.Buffer).Bytes()
 	}
 
-	err = m.Request.MarshalTo(buf)
+	buf, err = resp.MarshalTo(buf)
 	if err != nil {
-		xlog.ErrorIDf(m.ReqID, "request marshal failed: %s", err.Error())
-		err = xrpc.ErrInternalServer
 		return
 	}
 
-	if !s.encrypted {
+	if !encrypted {
 		h.crc = xdigest.Checksum(buf)
 	}
 	h.encode(headerBuf)
 
 	tt := time.Now().Add(magicNumberDuration).Add(headerDuration)
 	if err = w.SetWriteDeadline(tt); err != nil {
-		xlog.ErrorIDf(h.reqid, "failed to set magic number & header write deadline to %s: %s", c.Addr, err)
-		err = xrpc.ErrConnection
 		return
 	}
 	if _, err = w.Write(magicNumber[:]); err != nil {
-		xlog.ErrorIDf(h.reqid, "failed to write magic number to %s: %s", c.Addr, err)
-		err = xrpc.ErrConnection
 		return
 	}
-
 	_, err = w.Write(headerBuf)
 	if err != nil {
-		xlog.ErrorIDf(h.reqid, "failed to write header to %s: %s", c.Addr, err)
-		err = xrpc.ErrConnection
 		return
 	}
 
-	err = sendBytes(m.ReqID, c.Addr, w, buf, c.SendBufferSize)
-	if err != nil {
-		err = xrpc.ErrConnection
-		return
+	if n != 0 {
+		err = serverSendBytes(w, buf, writeSize)
+		if err != nil {
+			return
+		}
 	}
 
-	err = sendBytes(m.ReqID, c.Addr, w, m.extraReq, c.SendBufferSize)
-	if err != nil {
-		err = xrpc.ErrConnection
-		return
-	}
+	return nil
+}
 
+func serverSendBytes(w net.Conn, buf []byte, writeSize int) (err error) {
+
+	sent := 0
+	var tt time.Time
+	for sent < len(buf) {
+		if sent+writeSize > len(buf) {
+			writeSize = len(buf) - sent
+		}
+		tt = time.Now().Add(writeDuration)
+		if err = w.SetWriteDeadline(tt); err != nil {
+			return
+		}
+		if _, err = w.Write(buf[sent : sent+writeSize]); err != nil {
+			return
+		}
+		sent += writeSize
+	}
+	if sent != len(buf) {
+		return fmt.Errorf("unexpected sent size: %d, but want %d", sent, len(buf))
+	}
 	return nil
 }

@@ -14,39 +14,42 @@
 
 package xrpc
 
-const _size = 32 * 1024 // by default, create 32 KiB buffers
+import "github.com/zaibyte/pkg/config/settings"
+
+const _size = 32 * 1024                     // by default, create 32 KiB buffers
+const _bigsize = 1024 + settings.MaxObjSize // 1024 for main request. MaxObjSize for avoiding slice expansion.
 
 // Buffer is a thin wrapper around a byte slice. It's intended to be pooled, so
 // the only way to construct one is via a bufferPool.
 type Buffer struct {
-	bs   []byte
+	BS   []byte
 	pool bufferPool
 }
 
 // Len returns the length of the underlying byte slice.
 func (b *Buffer) Len() int {
-	return len(b.bs)
+	return len(b.BS)
 }
 
 // Cap returns the capacity of the underlying byte slice.
 func (b *Buffer) Cap() int {
-	return cap(b.bs)
+	return cap(b.BS)
 }
 
 // Bytes returns a mutable reference to the underlying byte slice.
 func (b *Buffer) Bytes() []byte {
-	return b.bs
+	return b.BS
 }
 
 // Reset resets the underlying byte slice. Subsequent writes re-use the slice's
 // backing array.
 func (b *Buffer) Reset() {
-	b.bs = b.bs[:0]
+	b.BS = b.BS[:0]
 }
 
 // Write implements io.Writer.
 func (b *Buffer) Write(bs []byte) (int, error) {
-	b.bs = append(b.bs, bs...)
+	b.BS = append(b.BS, bs...)
 	return len(bs), nil
 }
 

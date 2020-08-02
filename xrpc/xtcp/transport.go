@@ -47,19 +47,28 @@ import (
 
 var (
 	magicNumber         = [2]byte{0x7A, 0x61}
+	handshake           = [1]byte{0x1}
 	poisonNumber        = [2]byte{0x0, 0x0}
 	dialTimeout         = 2 * time.Second
 	tlsHandshakeTimeout = 3 * time.Second
+	handshakeDuration   = 1 * time.Second
 	magicNumberDuration = 1 * time.Second
 	headerDuration      = 2 * time.Second
 	readDuration        = 2 * time.Second
 	writeDuration       = 2 * time.Second
-	keepAlivePeriod     = 10 * time.Second
+
+	//magicNumberDuration = 100 * time.Second
+	//headerDuration      = 200 * time.Second
+	//readDuration        = 200 * time.Second
+	//writeDuration       = 200 * time.Second
+
+	keepAlivePeriod = 10 * time.Second
 )
 
 var (
 	dialer = &net.Dialer{
-		Timeout: dialTimeout,
+		Timeout:   dialTimeout,
+		KeepAlive: keepAlivePeriod,
 	}
 )
 
@@ -126,18 +135,11 @@ func (ln *defaultListener) Accept() (conn net.Conn, err error) {
 	}
 	tcpConn := c.(*net.TCPConn)
 	if err = setTCPConn(tcpConn); err != nil {
-		c.Close()
+		_ = c.Close()
 		return nil, err
 	}
 	if ln.tlsCfg != nil {
 		c = tls.Server(c, ln.tlsCfg)
-		tt := time.Now().Add(tlsHandshakeTimeout)
-		if err := c.SetDeadline(tt); err != nil {
-			return nil, err
-		}
-		if err := c.(*tls.Conn).Handshake(); err != nil { // Do handshake manually before xtcp build connection.
-			return nil, err
-		}
 	}
 	return c, nil
 }
@@ -253,11 +255,8 @@ func getConnection(target string, tlsConfig *tls.Config) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	tcpconn, ok := conn.(*net.TCPConn)
-	if ok {
-		if err := setTCPConn(tcpconn); err != nil {
-			return nil, err
-		}
+	if err = conn.(*net.TCPConn).SetLinger(0); err != nil {
+		return nil, err
 	}
 
 	if tlsConfig != nil {
@@ -267,9 +266,6 @@ func getConnection(target string, tlsConfig *tls.Config) (net.Conn, error) {
 			return nil, err
 		}
 		if err := conn.(*tls.Conn).Handshake(); err != nil {
-			return nil, err
-		}
-		if err := conn.SetDeadline(time.Time{}); err != nil {
 			return nil, err
 		}
 	}

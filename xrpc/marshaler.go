@@ -40,6 +40,8 @@ func (m *NopMarshaler) UnmarshalBinary(_ []byte) error {
 	return nil
 }
 
+func (m *NopMarshaler) Free() {}
+
 // MarshalFreer is the interface for type which implements Marshaler
 // and supports Free() to put it back to sync.Pool.
 type MarshalFreer interface {

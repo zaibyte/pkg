@@ -44,11 +44,11 @@ import (
 
 func TestRequestHeaderCanBeEncodedAndDecoded(t *testing.T) {
 	r := requestHeader{
-		msgID:   2048,
-		method:  objGetMethod,
-		reqid:   uid.MakeReqID(),
-		reqSize: 1024,
-		crc:     1000,
+		msgID:    2048,
+		method:   objGetMethod,
+		reqid:    uid.MakeReqID(),
+		mreqSize: 1024,
+		crc:      1000,
 	}
 	buf := make([]byte, requestHeaderSize)
 	result := r.encode(buf)
@@ -62,11 +62,11 @@ func TestRequestHeaderCanBeEncodedAndDecoded(t *testing.T) {
 
 func TestRequestHeaderCRCIsChecked(t *testing.T) {
 	r := requestHeader{
-		msgID:   2048,
-		method:  objGetMethod,
-		reqid:   uid.MakeReqID(),
-		reqSize: 1024,
-		crc:     1000,
+		msgID:    2048,
+		method:   objGetMethod,
+		reqid:    uid.MakeReqID(),
+		mreqSize: 1024,
+		crc:      1000,
 	}
 	buf := make([]byte, requestHeaderSize)
 	result := r.encode(buf)
@@ -92,11 +92,11 @@ func TestInvalidMethodNameIsReported(t *testing.T) {
 
 	for _, method := range methods {
 		r := requestHeader{
-			msgID:   2048,
-			reqid:   uid.MakeReqID(),
-			method:  method,
-			reqSize: 1024,
-			crc:     1000,
+			msgID:    2048,
+			reqid:    uid.MakeReqID(),
+			method:   method,
+			mreqSize: 1024,
+			crc:      1000,
 		}
 		buf := make([]byte, requestHeaderSize)
 		result := r.encode(buf)
@@ -109,10 +109,10 @@ func TestInvalidMethodNameIsReported(t *testing.T) {
 
 func TestRespHeaderCanBeEncodedAndDecoded(t *testing.T) {
 	r := respHeader{
-		errno:    22,
-		msgID:    2048,
-		respSize: 1024,
-		crc:      1000,
+		errno: 22,
+		msgID: 2048,
+		size:  1024,
+		crc:   1000,
 	}
 	buf := make([]byte, respHeaderSize)
 	result := r.encode(buf)
@@ -126,10 +126,10 @@ func TestRespHeaderCanBeEncodedAndDecoded(t *testing.T) {
 
 func TestRespHeaderCRCIsChecked(t *testing.T) {
 	r := respHeader{
-		errno:    22,
-		msgID:    2048,
-		respSize: 1024,
-		crc:      1000,
+		errno: 22,
+		msgID: 2048,
+		size:  1024,
+		crc:   1000,
 	}
 	buf := make([]byte, respHeaderSize)
 	result := r.encode(buf)
