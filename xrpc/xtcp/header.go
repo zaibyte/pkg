@@ -39,15 +39,16 @@ import (
 	"github.com/zaibyte/pkg/xdigest"
 )
 
-const reqHeaderSize = 25
+const reqHeaderSize = 25 + 16
 
 // reqHeader is the header for request.
 type reqHeader struct {
-	method   uint8  // [0, 1)
-	msgID    uint64 // [1, 9)
-	reqid    uint64 // [9, 17)
-	bodySize uint32 // [17, 21)
-	crc      uint32 // [21, 25)
+	method   uint8    // [0, 1)
+	msgID    uint64   // [1, 9)
+	reqid    uint64   // [9, 17)
+	bodySize uint32   // [17, 21)
+	oid      [16]byte // [21, 37)
+	crc      uint32   // [37, 41)
 }
 
 func (h *reqHeader) encode(buf []byte) []byte {
@@ -58,9 +59,10 @@ func (h *reqHeader) encode(buf []byte) []byte {
 	binary.BigEndian.PutUint64(buf[1:9], h.msgID)
 	binary.BigEndian.PutUint64(buf[9:17], h.reqid)
 	binary.BigEndian.PutUint32(buf[17:21], h.bodySize)
-	binary.BigEndian.PutUint32(buf[21:25], 0)
+	copy(buf[21:37], h.oid[:])
+	binary.BigEndian.PutUint32(buf[37:41], 0)
 	crc := xdigest.Checksum(buf[:reqHeaderSize])
-	binary.BigEndian.PutUint32(buf[21:25], crc)
+	binary.BigEndian.PutUint32(buf[37:41], crc)
 	h.crc = crc
 	return buf[:reqHeaderSize]
 }
@@ -70,18 +72,19 @@ func (h *reqHeader) decode(buf []byte) error {
 		panic("input buf too small")
 	}
 
-	incoming := binary.BigEndian.Uint32(buf[21:25])
-	binary.BigEndian.PutUint32(buf[21:25], 0)
+	incoming := binary.BigEndian.Uint32(buf[37:41])
+	binary.BigEndian.PutUint32(buf[37:41], 0)
 	expected := xdigest.Checksum(buf[:reqHeaderSize])
 	if incoming != expected {
 		return xrpc.ErrChecksumMismatch
 	}
-	binary.BigEndian.PutUint32(buf[21:25], incoming)
+	binary.BigEndian.PutUint32(buf[37:41], incoming)
 
 	h.method = buf[0]
 	h.msgID = binary.BigEndian.Uint64(buf[1:9])
 	h.reqid = binary.BigEndian.Uint64(buf[9:17])
 	h.bodySize = binary.BigEndian.Uint32(buf[17:21])
+	copy(h.oid[:], buf[21:37])
 	h.crc = incoming
 
 	return nil

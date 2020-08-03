@@ -35,7 +35,7 @@ func New() {
 
 	lvl := nanozap.NewAtomicLevel()
 	lvl.SetLevel(zapcore.InfoLevel)
-	core := zapcore.NewCore(zapcore.NewJSONEncoder(xlog.DefaultEncoderConfig()), &Stdouter{}, lvl)
+	core := zapcore.NewCore(zapcore.NewJSONEncoder(xlog.DefaultEncoderConfig()), &Discarder{}, lvl)
 
 	el := &xlog.ErrorLogger{
 		Logger:   nanozap.New(core),

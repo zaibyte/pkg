@@ -40,7 +40,8 @@
 package xtcp
 
 import (
-	"bytes"
+	"fmt"
+	"hash"
 	"io"
 	"net"
 	"sync"
@@ -49,6 +50,12 @@ import (
 	"github.com/zaibyte/pkg/xrpc"
 
 	"github.com/zaibyte/pkg/xlog"
+)
+
+const (
+	objPutMethod uint8 = 1
+	objGetMethod uint8 = 2
+	objDelMethod uint8 = 3
 )
 
 const (
@@ -85,22 +92,42 @@ func releaseTimer(t *time.Timer) {
 	timerPool.Put(t)
 }
 
-func readMagicNumber(conn net.Conn, magicNum []byte) error {
+func readBytes(r net.Conn, buf []byte, perRead int, encrypted bool, hash hash.Hash32, digest uint32) (err error) {
 
-	tt := time.Now().Add(magicNumberDuration)
-	if err := conn.SetReadDeadline(tt); err != nil {
-		return xrpc.ErrConnection
+	n := len(buf)
+	received := 0
+	var recvBuf []byte
+	if n < perRead {
+		recvBuf = buf[:n]
+	} else {
+		recvBuf = buf[:perRead]
 	}
-
-	if _, err := io.ReadFull(conn, magicNum); err != nil {
-		operr, ok := err.(net.Error)
-		if ok && operr.Timeout() {
-			return xrpc.ErrTimeout
+	toRead := n
+	deadline := time.Now()
+	for toRead > 0 {
+		deadline = deadline.Add(readDuration)
+		if err = r.SetReadDeadline(deadline); err != nil {
+			return fmt.Errorf("failed to set read deadline: %s, %s", r.RemoteAddr().String(), err.Error())
 		}
-		return xrpc.ErrConnection
+		if _, err = io.ReadFull(r, recvBuf); err != nil {
+			return fmt.Errorf("failed to read: %s, %s", r.RemoteAddr().String(), err.Error())
+		}
+		if !encrypted {
+			hash.Write(recvBuf)
+		}
+		toRead -= len(recvBuf)
+		received += len(recvBuf)
+		if toRead < perRead {
+			recvBuf = buf[received : received+toRead]
+		} else {
+			recvBuf = buf[received : received+perRead]
+		}
 	}
-	if !bytes.Equal(magicNum, magicNumber[:]) {
-		return xrpc.ErrBadRequest
+	if received != n {
+		return fmt.Errorf("unexpected received size: %d, but want %d", received, n)
 	}
-	return nil
+	if !encrypted && hash.Sum32() != digest {
+		return xrpc.ErrChecksumMismatch
+	}
+	return
 }

@@ -31,7 +31,7 @@ import (
 // | boxID(10) | groupID(22) |  ts(32) | digest(32) | size(24) | otype(8) |
 // +-----------+-------------+---------+------------+----------+----------+
 //
-// Total length: 16B.
+// Total length: 16B. After hex encoding, it will be 32B.
 //
 // boxID: 10bit
 // groupID: 22bit

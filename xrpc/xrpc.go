@@ -19,35 +19,22 @@ import (
 	"time"
 )
 
-type PutObjReq struct {
-	GroupID uint16
-	TS      uint32
-	Digest  uint32
-	Size    uint32
-	Otype   uint8
-}
-
-type GetObjReq struct {
-	GroupID uint16
-	TS      uint32
-	Digest  uint32
-}
-
-type DelObjReq struct {
-	GroupID uint16
-	TS      uint32
-	Digest  uint32
-}
-
-type Client interface {
+// Objecter is the object RPC client.
+type Objecter interface {
+	// Start Objecter.
 	Start() error
+	// Stop Objecter, release resource.
 	Stop() error
-	PutObj(reqid uint64, req *PutObjReq, obj []byte, timeout time.Duration) error
-	GetObj(reqid uint64, req *GetObjReq, timeout time.Duration) (obj io.ReadCloser, err error)
-	DelObj(reqid uint64, req *DelObjReq, timeout time.Duration) error
+	// Put puts object to the ZBuf node which Objecter connected.
+	Put(reqid uint64, oid string, objData []byte, timeout time.Duration) error
+	// Get gets object from the ZBuf node which Objecter connected.
+	Get(reqid uint64, oid string, timeout time.Duration) (obj io.ReadCloser, err error)
+	// Delete deletes object in the ZBuf node which Objecter connected.
+	Delete(reqid uint64, oid string, timeout time.Duration) error
 }
 
-type Server interface {
-	Start() error
-	Stop() error
-}
+type PutFunc func(reqid uint64, oid [16]byte, objData Byteser) error
+
+type GetFunc func(reqid uint64, oid [16]byte) (objData Byteser, err error)
+
+type DeleteFunc func(reqid uint64, oid [16]byte) error

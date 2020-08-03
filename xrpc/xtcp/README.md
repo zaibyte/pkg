@@ -1,38 +1,30 @@
 # ztcp
+
 zrpc implementation built on TCP.
 
 Based on [goproc](https://github.com/valyala/gorpc) with these modifications:
 
-1. Use method (uint8) replaces of function & service name (string).
+1. No multi-methods supports, only has three methods: Put Object, Get Object, Delete Object.
 
-2. Use magic number to establish connection.
+2. Implement End-to-End checksum.
 
-3. Add read/write deadline on each read/write.
+3. Use magic number to verify request.
 
-4. Use header to pass needed arguments for a Zai rpc.
+4. Add read/write deadline on each read/write.
 
-5. Import zlog for logging
+5. Add header.
 
-6. Replacing Gob encoding by any objects supporting marshal & unmarshal
+6. Import xlog for logging.
 
-7. Remove batch supports
+7. Replacing Gob encoding by binary encoding.
 
-8. Remove public Async API
+8. Remove batch supports
 
-## Timeout
-
-There are two types of timeout in ztcp:
-
-1. Request timeout
-
-This timeout is copied from gorpc, and it's helpful to cancel request which
-waiting too long in request queue.
-
-2. Connection read/write deadline
-
-
+9. Remove public Async API
 
 ## Performance Tuning
+
+The origin has tried its best to make things non-blocking.
 
 ### Done
 

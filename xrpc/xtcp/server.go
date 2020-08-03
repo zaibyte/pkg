@@ -40,9 +40,8 @@
 package xtcp
 
 import (
+	"encoding/binary"
 	"fmt"
-	"hash"
-	"hash/crc32"
 	"io"
 	"net"
 	"runtime"
@@ -55,31 +54,6 @@ import (
 	"github.com/zaibyte/pkg/xrpc"
 
 	"github.com/zaibyte/pkg/xlog"
-)
-
-// HandlerFunc is a server handler function.
-//
-// req is the combination of mainReq & extReq in Client.Call(),
-// mreqLen is the mainReq's length in bytes.
-//
-// HandlerFunc will be invoked by Server for handling request.
-// Before this process, the request & extraRequest will be read from the net connection,
-// (after reading, the connection can be reused for the next reading)
-// using *xprc.Buffer could reducing the GC overhead by sync.Pool.
-//
-// After resp written into connection, it will be freed.
-type HandlerFunc func(reqid uint64, req *xrpc.Buffer, mreqLen int) (resp xrpc.MarshalFreer, err error)
-
-const (
-	// DefaultConcurrency is the default number of concurrent rpc calls
-	// the server can process.
-	DefaultConcurrency = 8 * 1024
-	// DefaultServerSendBufferSize is the default size for Server send buffers.
-	DefaultServerSendBufferSize = 64 * 1024
-	// DefaultServerRecvBufferSize is the default size for Server receive buffers.
-	DefaultServerRecvBufferSize = 64 * 1024
-	// DefaultServerSendPayloadSize is the default size for Client write payload buffers.
-	DefaultServerSendPayloadSize = 512 * 1024
 )
 
 // Server implements RPC server.
@@ -97,14 +71,6 @@ type Server struct {
 	//
 	// By default TCP transport is used.
 	Addr string
-
-	// Router function for incoming requests.
-	//
-	// Server calls this function for each incoming request.
-	// The function must process the request and return the corresponding response.
-	//
-	// Hint: use Router for HandlerFunc construction.
-	Router *Router
 
 	// The maximum number of concurrent rpc calls the server may perform.
 	// Default is DefaultConcurrency.
@@ -126,7 +92,7 @@ type Server struct {
 
 	// The server obtains new client connections via Listener.Accept().
 	//
-	// Override the listener if you want custom underlying transport
+	// Override the Listener if you want custom underlying transport
 	// and/or client authentication/authorization.
 	// Don't forget overriding Client.Dial() callback accordingly.
 	//
@@ -135,7 +101,11 @@ type Server struct {
 	//   inter-process rpc.
 	//
 	// By default it returns TCP connections accepted from Server.Addr.
-	Listener Listener
+	Listener *defaultListener
+
+	PutObj    xrpc.PutFunc
+	GetObj    xrpc.GetFunc
+	DeleteObj xrpc.DeleteFunc
 
 	encrypted bool
 
@@ -143,17 +113,29 @@ type Server struct {
 	stopWg         sync.WaitGroup
 }
 
+const (
+	// DefaultConcurrency is the default number of concurrent rpc calls
+	// the server can process.
+	DefaultConcurrency = 8 * 1024
+	// DefaultServerSendBufferSize is the default size for Server send buffers.
+	DefaultServerSendBufferSize = 64 * 1024
+	// DefaultServerRecvBufferSize is the default size for Server receive buffers.
+	DefaultServerRecvBufferSize = 64 * 1024
+	// DefaultServerSendPayloadSize is the default size for Client write payload buffers.
+	DefaultServerSendPayloadSize = 512 * 1024
+)
+
 // Start starts rpc server.
 func (s *Server) Start() error {
-
-	if s.Router == nil {
-		xlog.Panic("server.Router cannot be nil")
-	}
 
 	if s.serverStopChan != nil {
 		xlog.Panic("server is already running. Stop it before starting it again")
 	}
 	s.serverStopChan = make(chan struct{})
+
+	if s.PutObj == nil || s.GetObj == nil || s.DeleteObj == nil {
+		xlog.Panic("not enough handler function")
+	}
 
 	if s.Concurrency <= 0 {
 		s.Concurrency = DefaultConcurrency
@@ -266,16 +248,16 @@ func serverHandleConnection(s *Server, conn net.Conn, workersCh chan struct{}) {
 	select {
 	case ok := <-okHandshake:
 		if !ok {
-			conn.Close()
+			_ = conn.Close()
 			return
 		}
 	case <-s.serverStopChan:
 		stopping.Store(true)
-		conn.Close()
+		_ = conn.Close()
 		return
 	case <-time.After(10 * time.Second):
 		xlog.Errorf("cannot obtain handshake from client:%s during 10s", conn.RemoteAddr().String())
-		conn.Close()
+		_ = conn.Close()
 		return
 	}
 
@@ -306,13 +288,15 @@ func serverHandleConnection(s *Server, conn net.Conn, workersCh chan struct{}) {
 }
 
 type serverMessage struct {
-	Method     uint16
-	MsgID      uint64
-	ReqID      uint64
-	Request    *xrpc.Buffer
-	MainReqLen int
-	Response   xrpc.MarshalFreer
-	Error      error
+	method   uint8
+	msgID    uint64
+	reqid    uint64
+	oid      [16]byte
+	bodySize uint32
+	reqData  xrpc.Byteser
+
+	resp xrpc.Byteser
+	err  error
 }
 
 var serverMessagePool = &sync.Pool{
@@ -322,16 +306,13 @@ var serverMessagePool = &sync.Pool{
 }
 
 func (s *serverMessage) reset() {
-	s.Method = 0
-	s.MsgID = 0
-	s.ReqID = 0
-	if s.Request != nil {
-		s.Request.Free()
-	}
-	s.Request = nil
-	s.MainReqLen = 0
-	s.Response = nil
-	s.Error = nil
+	s.method = 0
+	s.msgID = 0
+	s.reqid = 0
+	s.reqData = nil
+
+	s.resp = nil
+	s.err = nil
 }
 
 func serverReader(s *Server, r net.Conn, responsesChan chan<- *serverMessage,
@@ -344,70 +325,75 @@ func serverReader(s *Server, r net.Conn, responsesChan chan<- *serverMessage,
 		close(done)
 	}()
 
-	magicNum := make([]byte, len(magicNumber))
-	headerBuf := make([]byte, requestHeaderSize)
-
+	headerBuf := make([]byte, reqHeaderSize)
 	for {
-		err := readMagicNumber(r, magicNum)
+		deadline := time.Now().Add(headerDuration)
+		err := readReqHeader(r, headerBuf, deadline)
 		if err != nil {
 			if err == xrpc.ErrTimeout {
-				continue // Keeping trying to read request.
+				continue // Keeping trying to read request header.
 			}
-			xlog.Errorf("failed to read magic number from client: %s: %s", r.RemoteAddr().String(), err.Error())
+			xlog.Errorf("failed to read request header from %s: %s", r.RemoteAddr().String(), err)
 			return
 		}
 
-		header, err := readReqHeader(r, headerBuf)
+		h := new(reqHeader)
+		err = h.decode(headerBuf)
 		if err != nil {
-			xlog.Errorf("failed to read header from %s: %s", r.RemoteAddr().String(), err)
+			xlog.Errorf("failed to decode request header from %s: %s", r.RemoteAddr().String(), err.Error())
 			return
 		}
 
 		m := serverMessagePool.Get().(*serverMessage)
-		m.Method = header.method
-		m.MsgID = header.msgID
-		m.ReqID = header.reqid
-		m.MainReqLen = int(header.mreqSize)
+		m.method = h.method
+		m.msgID = h.msgID
+		m.reqid = h.reqid
+		m.oid = h.oid
+		m.bodySize = h.bodySize
 
-		var xbuf *xrpc.Buffer
-		if header.extSize > 32*1024-uint32(m.MainReqLen) {
-			xbuf = xrpc.GetBigBytes
+		n := m.bodySize
+
+		if n == 0 {
+			go serveRequest(s, responsesChan, stopChan, m, workersCh)
+			continue
+		}
+
+		digest := binary.LittleEndian.Uint32(m.oid[8:12])
+		xd := xdigest.New()
+		var req xrpc.Byteser
+
+		if n > xrpc.MaxBytesSizeInPool {
+			req = &xrpc.BytesBuffer{
+				S: make([]byte, n),
+			}
+			buf := req.Bytes()
+			err = readBytes(r, buf, s.RecvBufferSize, s.encrypted, xd, digest)
+			if err != nil {
+				xlog.ErrorID(m.reqid, err.Error())
+				if err != xrpc.ErrChecksumMismatch {
+					err = xrpc.ErrConnection
+				}
+				m.reset()
+				serverMessagePool.Put(m)
+				return
+			}
 		} else {
-			xbuf = xrpc.GetBytes()
-		}
-
-		crc := crc32.New(xdigest.CrcTbl)
-
-		if m.MainReqLen != 0 {
-			err = readBytes(m.ReqID, r, xbuf.Bytes()[:m.MainReqLen], s.RecvBufferSize, s.encrypted, crc)
+			bs := xrpc.GetBytes()
+			buf := bs.Bytes()[:n]
+			err = readBytes(r, buf, s.RecvBufferSize, s.encrypted, xd, digest)
 			if err != nil {
+				xlog.ErrorID(m.reqid, err.Error())
+				if err != xrpc.ErrChecksumMismatch {
+					err = xrpc.ErrConnection
+				}
 				m.reset()
 				serverMessagePool.Put(m)
 				return
 			}
+			bs.S = buf // For BytesBufferPool we need replace the old bytes slice.
+			req = bs
 		}
-
-		if header.extSize != 0 {
-			err = readBytes(m.ReqID, r, xbuf.Bytes()[m.MainReqLen:m.MainReqLen+int(header.extSize)], s.RecvBufferSize, s.encrypted, crc)
-			if err != nil {
-				m.reset()
-				serverMessagePool.Put(m)
-				return
-			}
-		}
-
-		xbuf.BS = xbuf.Bytes()[:m.MainReqLen+int(header.extSize)]
-		m.Request = xbuf
-
-		if !s.encrypted {
-			incoming := crc.Sum32()
-			if incoming != header.crc {
-				xlog.ErrorID(m.ReqID, "failed to read request: invalid checksum")
-				m.reset()
-				serverMessagePool.Put(m)
-				return
-			}
-		}
+		m.reqData = req
 
 		select {
 		case workersCh <- struct{}{}:
@@ -424,72 +410,32 @@ func serverReader(s *Server, r net.Conn, responsesChan chan<- *serverMessage,
 	}
 }
 
-func readReqHeader(r net.Conn, headerBuf []byte) (header *requestHeader, err error) {
-	tt := time.Now().Add(headerDuration)
-	if err = r.SetReadDeadline(tt); err != nil {
+func readReqHeader(r net.Conn, buf []byte, deadline time.Time) (err error) {
+	if err = r.SetReadDeadline(deadline); err != nil {
 		err = xrpc.ErrConnection
 		return
 	}
-	if _, err = io.ReadFull(r, headerBuf); err != nil {
-		err = xrpc.ErrConnection
-		return
-	}
-
-	header = new(requestHeader)
-	if err = header.decode(headerBuf); err != nil {
-		return
-	}
-	return
-}
-
-func readBytes(reqid uint64, r net.Conn, buf []byte, readSize int, encrypted bool, crc hash.Hash32) (err error) {
-
-	n := len(buf)
-	received := 0
-	var recvBuf []byte
-	if n < readSize {
-		recvBuf = buf[:n]
-	} else {
-		recvBuf = buf[:readSize]
-	}
-	toRead := n
-	tt := time.Now()
-	for toRead > 0 {
-		tt = tt.Add(readDuration)
-		if err = r.SetReadDeadline(tt); err != nil {
-			xlog.ErrorIDf(reqid, "failed to set read deadline: %s, %s", r.RemoteAddr().String(), err.Error())
-			return
+	if _, err = io.ReadFull(r, buf); err != nil {
+		operr, ok := err.(net.Error)
+		if ok && operr.Timeout() {
+			return xrpc.ErrTimeout
 		}
-		if _, err = io.ReadFull(r, recvBuf); err != nil {
-			xlog.ErrorIDf(reqid, "failed to read: %s, %s", r.RemoteAddr().String(), err.Error())
-			return
-		}
-		if !encrypted {
-			crc.Write(recvBuf)
-		}
-		toRead -= len(recvBuf)
-		received += len(recvBuf)
-		if toRead < readSize {
-			recvBuf = buf[received : received+toRead]
-		} else {
-			recvBuf = buf[received : received+readSize]
-		}
-	}
-	if received != n {
-		xlog.ErrorIDf(reqid, "unexpected received size: %d, but want %d", received, n)
 		return xrpc.ErrConnection
 	}
+
 	return
 }
 
 func serveRequest(s *Server, responsesChan chan<- *serverMessage, stopChan <-chan struct{}, m *serverMessage, workersCh <-chan struct{}) {
-	request := m.Request
-	response, err := callHandlerWithRecover(s.Router, m.ReqID, m.Method, request, m.MainReqLen)
+	reqData := m.reqData
+	resp, err := callHandlerWithRecover(s, m.reqid, m.method, m.oid, reqData)
 
-	m.Request.Free()
-	m.Request = nil
-	m.Response = response
-	m.Error = err
+	if reqData != nil {
+		_ = m.reqData.Close()
+	}
+	m.reqData = nil
+	m.resp = resp
+	m.err = err
 
 	// Select hack for better performance.
 	// See https://github.com/valyala/gorpc/pull/1 for details.
@@ -505,7 +451,7 @@ func serveRequest(s *Server, responsesChan chan<- *serverMessage, stopChan <-cha
 	<-workersCh
 }
 
-func callHandlerWithRecover(router *Router, reqid uint64, method uint16, request *xrpc.Buffer, mlen int) (response xrpc.MarshalFreer, err error) {
+func callHandlerWithRecover(s *Server, reqid uint64, method uint8, oid [16]byte, reqData xrpc.Byteser) (resp xrpc.Byteser, err error) {
 	defer func() {
 		if x := recover(); x != nil {
 			stackTrace := make([]byte, 1<<20)
@@ -514,14 +460,25 @@ func callHandlerWithRecover(router *Router, reqid uint64, method uint16, request
 			xlog.ErrorID(reqid, err.Error())
 		}
 	}()
-	return router.Handle(reqid, uint8(method), request, mlen)
+
+	switch method {
+	case objPutMethod:
+		err = s.PutObj(reqid, oid, reqData)
+	case objGetMethod:
+		resp, err = s.GetObj(reqid, oid)
+	case objDelMethod:
+		err = s.DeleteObj(reqid, oid)
+	default:
+		err = xrpc.ErrNotImplemented
+	}
+
+	return
 }
 
 func serverWriter(s *Server, w net.Conn, responsesChan <-chan *serverMessage, stopChan <-chan struct{}, done chan<- struct{}) {
 	defer func() { close(done) }()
 
 	headerBuf := make([]byte, respHeaderSize)
-	payload := make([]byte, s.SendPayloadSize)
 	for {
 		var m *serverMessage
 
@@ -536,100 +493,45 @@ func serverWriter(s *Server, w net.Conn, responsesChan <-chan *serverMessage, st
 				return
 			case m = <-responsesChan:
 			}
-
-			msgID := m.MsgID
-			resp := m.Response
-			rerr := m.Error
-			reqid := m.ReqID
-
-			m.reset()
-			serverMessagePool.Put(m)
-
-			if err := sendResp(w, headerBuf, msgID, resp, rerr, s.encrypted, payload, s.SendBufferSize); err != nil {
-				xlog.ErrorIDf(reqid, "cannot send response to wire: %s", err)
-				return
-			}
-			resp.Free()
 		}
+
+		resp := m.resp
+		reqid := m.reqid
+
+		m.reset()
+		serverMessagePool.Put(m)
+
+		if err := sendResp(w, m, headerBuf, s.SendBufferSize); err != nil {
+			xlog.ErrorIDf(reqid, "cannot send response to wire: %s", err)
+			return
+		}
+		_ = resp.Close()
 	}
 }
 
-func sendResp(w net.Conn, headerBuf []byte, msgID uint64, resp xrpc.Marshaler, rerr error,
-	encrypted bool, payload []byte, writeSize int) (err error) {
+func sendResp(w net.Conn, m *serverMessage, headerBuf []byte, perWrite int) (err error) {
 
-	n, err := resp.MarshalLen()
-	if err != nil {
-		return
-	}
-
-	h := &respHeader{ // TODO header pool
-		msgID: msgID,
-		errno: uint16(xrpc.ErrToErrno(rerr)),
-		size:  uint32(n),
-	}
-
-	var buf []byte
-	if _, ok := resp.(*xrpc.Buffer); !ok {
-		if n > len(payload) {
-			buf = make([]byte, n)
-		} else {
-			buf = payload[:n]
-		}
-	} else {
-		buf = resp.(*xrpc.Buffer).Bytes()
-	}
-
-	buf, err = resp.MarshalTo(buf)
-	if err != nil {
-		return
-	}
-
-	if !encrypted {
-		h.crc = xdigest.Checksum(buf)
+	n := m.bodySize
+	h := &respHeader{
+		msgID: m.msgID,
+		errno: uint16(xrpc.ErrToErrno(m.err)),
+		size:  n,
 	}
 	h.encode(headerBuf)
-
-	tt := time.Now().Add(magicNumberDuration).Add(headerDuration)
-	if err = w.SetWriteDeadline(tt); err != nil {
-		return
-	}
-	if _, err = w.Write(magicNumber[:]); err != nil {
-		return
-	}
-	_, err = w.Write(headerBuf)
+	deadline := time.Now().Add(headerDuration) // TODO create a time.Time pool
+	err = sendHeader(w, headerBuf, deadline)
 	if err != nil {
 		return
 	}
 
-	if n != 0 {
-		err = serverSendBytes(w, buf, writeSize)
-		if err != nil {
-			return
-		}
+	if n == 0 {
+		return
 	}
 
-	return nil
-}
-
-func serverSendBytes(w net.Conn, buf []byte, writeSize int) (err error) {
-
-	sent := 0
-	var tt time.Time
-	for sent < len(buf) {
-		if sent+writeSize > len(buf) {
-			writeSize = len(buf) - sent
-		}
-		tt = time.Now().Add(writeDuration)
-		if err = w.SetWriteDeadline(tt); err != nil {
-			return
-		}
-		if _, err = w.Write(buf[sent : sent+writeSize]); err != nil {
-			return
-		}
-		sent += writeSize
+	err = sendBytes(w, m.resp.Bytes(), perWrite, deadline) // Only put need it, and object has digest, no need calc checksum.
+	if err != nil {
+		return
 	}
-	if sent != len(buf) {
-		return fmt.Errorf("unexpected sent size: %d, but want %d", sent, len(buf))
-	}
+
 	return nil
 }

@@ -40,30 +40,28 @@
 package xtcp
 
 import (
-	"bytes"
 	"fmt"
 	"math/rand"
 	"net"
 	"testing"
 	"time"
 
-	"github.com/zaibyte/pkg/uid"
-
 	"github.com/zaibyte/pkg/xrpc"
 
 	_ "github.com/zaibyte/pkg/xlog/xlogtest"
 )
 
-func bytesHandlerFunc(reqid uint64, req *xrpc.Buffer, mreqLen int) (resp xrpc.MarshalFreer, err error) {
-
-	xbuf := xrpc.GetBytes()
-	xbuf.Write(req.Bytes())
-	return xbuf, nil
+// TODO create a map to keep put obj
+func testPutFunc(reqid uint64, oid [16]byte, objData xrpc.Byteser) error {
+	return nil
 }
 
-func nopHandlerfunc(reqid uint64, req *xrpc.Buffer, mreqLen int) (resp xrpc.MarshalFreer, err error) {
+func testGetFunc(reqid uint64, oid [16]byte) (objData xrpc.Byteser, err error) {
+	return
+}
 
-	return new(xrpc.NopMarshaler), nil
+func testDeleteFunc(reqid uint64, oid [16]byte) error {
+	return nil
 }
 
 func getRandomAddr() string {
@@ -72,9 +70,8 @@ func getRandomAddr() string {
 
 func TestBadClient(t *testing.T) {
 	addr := getRandomAddr()
-	r := NewRouter()
-	r.AddFunc(1, bytesHandlerFunc)
-	s := NewServer(addr, r, nil)
+
+	s := NewServer(addr, nil, testPutFunc, testGetFunc, testDeleteFunc)
 	s.Start()
 	defer s.Stop()
 
@@ -92,55 +89,11 @@ func sendBadInput(t *testing.T, addr string, isCompressed byte) {
 		t.Fatalf("cannot establish connection to server on addr=[%s]: [%s]", addr, err)
 	}
 
-	data := randomData(65536)
+	data := make([]byte, 1024)
+	rand.Read(data)
 	data[0] = handshake[0]
 	conn.Write(data)
 	conn.Close()
-}
-
-func randomData(n int) []byte {
-	data := make([]byte, n)
-	for i := 0; i < n; i++ {
-		data[i] = byte(rand.Int())
-	}
-	return data
-}
-
-func TestByteSlice(t *testing.T) {
-	addr := getRandomAddr()
-
-	r := NewRouter()
-	r.AddFunc(1, bytesHandlerFunc)
-
-	s := NewServer(addr, r, nil)
-	if err := s.Start(); err != nil {
-		t.Fatalf("cannot start server: %s", err)
-	}
-	defer s.Stop()
-
-	c := NewClient(addr, nil)
-	r.AddToClient(c)
-	c.Start()
-	defer c.Stop()
-
-	req := make([]byte, 4096)
-	rand.Read(req)
-	xbuf := xrpc.GetBytes()
-	xbuf.Write(req)
-	defer xbuf.Free()
-
-	for i := 0; i < 100; i++ {
-		resp := xrpc.GetBytes()
-		defer resp.Free()
-		err := c.Call(uid.MakeReqID(), 1, nil, resp, xbuf)
-		if err != nil {
-			t.Fatalf("Unexpected error: %s", err)
-		}
-
-		if !bytes.Equal(resp.Bytes(), req) {
-			t.Fatal("Unexpected response")
-		}
-	}
 }
 
 //func TestBadServer(t *testing.T) {
@@ -172,7 +125,7 @@ func TestByteSlice(t *testing.T) {
 //	c := NewTCPClient(addr)
 //	c.Start()
 //	for i := 0; i < 10; i++ {
-//		c.Call("foobarbaz")
+//		c.call("foobarbaz")
 //	}
 //	c.Stop()
 //
@@ -289,7 +242,7 @@ func TestByteSlice(t *testing.T) {
 //	defer c.Stop()
 //
 //	for i := 0; i < 10; i++ {
-//		resp, err := c.Call(123)
+//		resp, err := c.call(123)
 //		if err == nil {
 //			t.Fatalf("Timeout error must be returned")
 //		}
@@ -323,7 +276,7 @@ func TestByteSlice(t *testing.T) {
 //	defer c.Stop()
 //
 //	for i := 0; i < 10; i++ {
-//		resp, err := c.CallTimeout(123, time.Millisecond)
+//		resp, err := c.callTimeout(123, time.Millisecond)
 //		if err == nil {
 //			t.Fatalf("Timeout error must be returned")
 //		}
@@ -344,7 +297,7 @@ func TestByteSlice(t *testing.T) {
 //	c.Start()
 //	defer c.Stop()
 //
-//	resp, err := c.Call("foobar")
+//	resp, err := c.call("foobar")
 //	if err == nil {
 //		t.Fatalf("Timeout error must be returned")
 //	}
@@ -379,7 +332,7 @@ func TestByteSlice(t *testing.T) {
 //	defer c.Stop()
 //
 //	for i := 0; i < 3; i++ {
-//		resp, err := c.Call("foobar")
+//		resp, err := c.call("foobar")
 //		if err == nil {
 //			t.Fatalf("Unexpected nil error")
 //		}
@@ -392,7 +345,7 @@ func TestByteSlice(t *testing.T) {
 //	}
 //
 //	for i := 0; i < 3; i++ {
-//		resp, err := c.Call("aaaaa")
+//		resp, err := c.call("aaaaa")
 //		if err != nil {
 //			t.Fatalf("Unexpected error: [%s]", err)
 //		}
@@ -452,17 +405,17 @@ func TestByteSlice(t *testing.T) {
 //			goto exit
 //		}
 //
-//		if r.Error == nil {
-//			t.Fatalf("Stuck server returned response? %+v", r.Response)
+//		if r.err == nil {
+//			t.Fatalf("Stuck server returned response? %+v", r.resp)
 //		}
-//		ce := r.Error.(*ClientError)
+//		ce := r.err.(*ClientError)
 //		if ce.Connection {
 //			stuckErrors++
 //		} else if !ce.Overflow {
 //			t.Fatalf("Unexpected error returned: [%s]", ce)
 //		}
-//		if r.Response != nil {
-//			t.Fatalf("Unexpected response from stuck server: %+v", r.Response)
+//		if r.resp != nil {
+//			t.Fatalf("Unexpected response from stuck server: %+v", r.resp)
 //		}
 //	}
 //exit:
@@ -474,7 +427,7 @@ func TestByteSlice(t *testing.T) {
 //
 //func testIntClient(t *testing.T, c *Client2) {
 //	for i := 0; i < 10; i++ {
-//		resp, err := c.Call(i)
+//		resp, err := c.call(i)
 //		if err != nil {
 //			t.Fatalf("Unexpected error: [%s]", err)
 //		}
@@ -561,7 +514,7 @@ func TestByteSlice(t *testing.T) {
 //		t.Fatalf("Unepxected error in Send(): [%s]", err)
 //	}
 //
-//	resp, err := c.CallTimeout(5, 50*time.Millisecond)
+//	resp, err := c.callTimeout(5, 50*time.Millisecond)
 //	if err == nil {
 //		t.Fatalf("Unexpected nil error")
 //	}
@@ -569,7 +522,7 @@ func TestByteSlice(t *testing.T) {
 //		t.Fatalf("Unexepcted error type: %v. Expected timeout error", err)
 //	}
 //
-//	resp, err = c.CallTimeout(34, 200*time.Millisecond)
+//	resp, err = c.callTimeout(34, 200*time.Millisecond)
 //	if err != nil {
 //		t.Fatalf("Unexpected error: [%s]", err)
 //	}
@@ -760,12 +713,12 @@ func TestByteSlice(t *testing.T) {
 //	for i := 0; i < 10; i++ {
 //		r := res[i]
 //		<-r.Done
-//		if r.Error != nil {
-//			t.Fatalf("Unexpected error: [%s]", r.Error)
+//		if r.err != nil {
+//			t.Fatalf("Unexpected error: [%s]", r.err)
 //		}
-//		x, ok := r.Response.(int)
+//		x, ok := r.resp.(int)
 //		if !ok {
-//			t.Fatalf("Unexpected response type: %T. Expected int", r.Response)
+//			t.Fatalf("Unexpected response type: %T. Expected int", r.resp)
 //		}
 //		if x != i {
 //			t.Fatalf("Unexpected value returned: %d. Expected %d", x, i)
@@ -842,7 +795,7 @@ func TestByteSlice(t *testing.T) {
 //	defer c.Stop()
 //
 //	for i := 0; i < 10; i++ {
-//		resp, err := c.Call(nil)
+//		resp, err := c.call(nil)
 //		if err != nil {
 //			t.Fatalf("Unexpected error: [%s]", err)
 //		}
@@ -886,7 +839,7 @@ func TestByteSlice(t *testing.T) {
 //		if err != nil {
 //			t.Fatalf("unexpected error when sending request #%d: [%s]", i, err)
 //		}
-//		res.Cancel()
+//		res.cancel()
 //		canceledResults = append(canceledResults, res)
 //	}
 //
@@ -895,11 +848,11 @@ func TestByteSlice(t *testing.T) {
 //	case <-time.After(time.Second):
 //		t.Fatalf("timeout")
 //	}
-//	if slowRes.Error != nil {
+//	if slowRes.err != nil {
 //		t.Fatalf("unexpected error: [%s]", err)
 //	}
-//	if !reflect.DeepEqual(slowRes.Response, expectedResponse) {
-//		t.Fatalf("unexpected response: %v. Expecting %v", slowRes.Response, expectedResponse)
+//	if !reflect.DeepEqual(slowRes.resp, expectedResponse) {
+//		t.Fatalf("unexpected response: %v. Expecting %v", slowRes.resp, expectedResponse)
 //	}
 //
 //	canceledCalls := 0
@@ -909,8 +862,8 @@ func TestByteSlice(t *testing.T) {
 //		case <-time.After(time.Second):
 //			t.Fatalf("timeout")
 //		}
-//		if res.Error != nil {
-//			ce := res.Error.(*ClientError)
+//		if res.err != nil {
+//			ce := res.err.(*ClientError)
 //			if ce.Canceled {
 //				canceledCalls++
 //			}
@@ -940,7 +893,7 @@ func TestByteSlice(t *testing.T) {
 //	defer c.Stop()
 //
 //	for i := 0; i < 10; i++ {
-//		resp, err := c.Call(i)
+//		resp, err := c.call(i)
 //		if err != nil {
 //			t.Fatalf("Unexpected error: [%s]", err)
 //		}
@@ -972,7 +925,7 @@ func TestByteSlice(t *testing.T) {
 //	defer c.Stop()
 //
 //	for i := 0; i < 10; i++ {
-//		resp, err := c.Call(fmt.Sprintf("hello %d,", i))
+//		resp, err := c.call(fmt.Sprintf("hello %d,", i))
 //		if err != nil {
 //			t.Fatalf("Unexpected error: [%s]", err)
 //		}
@@ -1011,7 +964,7 @@ func TestByteSlice(t *testing.T) {
 //	defer c.Stop()
 //
 //	for i := 0; i < 10; i++ {
-//		resp, err := c.Call(&S{
+//		resp, err := c.call(&S{
 //			A: i,
 //			B: fmt.Sprintf("aaa %d", i),
 //		})
@@ -1054,7 +1007,7 @@ func TestByteSlice(t *testing.T) {
 //	c.Start()
 //	defer c.Stop()
 //
-//	resp, err := c.Call(1234)
+//	resp, err := c.call(1234)
 //	if err != nil {
 //		t.Fatalf("Unexpected error: [%s]", err)
 //	}
@@ -1066,7 +1019,7 @@ func TestByteSlice(t *testing.T) {
 //		t.Fatalf("Unexpected value returned: %d. Expected 1234", expInt)
 //	}
 //
-//	resp, err = c.Call("abc")
+//	resp, err = c.call("abc")
 //	if err != nil {
 //		t.Fatalf("Unexpected error: [%s]", err)
 //	}
@@ -1079,7 +1032,7 @@ func TestByteSlice(t *testing.T) {
 //	}
 //
 //	tt := time.Unix(0, tsc.UnixNano())
-//	resp, err = c.Call(tt)
+//	resp, err = c.call(tt)
 //	if err != nil {
 //		t.Fatalf("Unexpected error: [%s]", err)
 //	}
@@ -1092,7 +1045,7 @@ func TestByteSlice(t *testing.T) {
 //	}
 //
 //	sS := &SS{A: 432, B: "ssd", T: tt}
-//	resp, err = c.Call(sS)
+//	resp, err = c.call(sS)
 //	if err != nil {
 //		t.Fatalf("Unexpected error: [%s]", err)
 //	}
@@ -1131,7 +1084,7 @@ func TestByteSlice(t *testing.T) {
 //		go func() {
 //			defer wg.Done()
 //			for j := 0; j < 100; j++ {
-//				resp, err := c.Call(j)
+//				resp, err := c.call(j)
 //				if err != nil {
 //					t.Fatalf("Unexpected error: [%s]", err)
 //				}
@@ -1165,29 +1118,29 @@ func TestByteSlice(t *testing.T) {
 //
 //		select {
 //		case <-r.Done:
-//			t.Fatalf("%d. <-Done must be locked before Batch.Call()", i)
+//			t.Fatalf("%d. <-Done must be locked before Batch.call()", i)
 //		default:
 //		}
 //
 //		results[i] = r
 //	}
-//	if err := b.Call(); err != nil {
+//	if err := b.call(); err != nil {
 //		t.Fatalf("Unexpected error when calling batch rpcs: [%s]", err)
 //	}
 //
 //	for i := 0; i < N; i++ {
 //		r := results[i]
-//		if r.Error != nil {
-//			t.Fatalf("Unexpected error in batch result %d: [%s]", i, r.Error)
+//		if r.err != nil {
+//			t.Fatalf("Unexpected error in batch result %d: [%s]", i, r.err)
 //		}
-//		if r.Response.(int) != i {
-//			t.Fatalf("Unexpected response in batch result %d: %+v", i, r.Response)
+//		if r.resp.(int) != i {
+//			t.Fatalf("Unexpected response in batch result %d: %+v", i, r.resp)
 //		}
 //
 //		select {
 //		case <-r.Done:
 //		case <-time.After(10 * time.Millisecond):
-//			t.Fatalf("%d BatchResult.Done must be unblocked after Batch.Call()", i)
+//			t.Fatalf("%d BatchResult.Done must be unblocked after Batch.call()", i)
 //		}
 //	}
 //}
@@ -1216,36 +1169,36 @@ func TestByteSlice(t *testing.T) {
 //
 //		select {
 //		case <-r.Done:
-//			t.Fatalf("%d. <-Done must be locked before Batch.Call()", i)
+//			t.Fatalf("%d. <-Done must be locked before Batch.call()", i)
 //		default:
 //		}
 //
 //		results[i] = r
 //	}
-//	err := b.CallTimeout(10 * time.Millisecond)
+//	err := b.callTimeout(10 * time.Millisecond)
 //	if err == nil {
-//		t.Fatalf("Unexpected nil error when calling Batch.CallTimeout()")
+//		t.Fatalf("Unexpected nil error when calling Batch.callTimeout()")
 //	}
 //	if !err.(*ClientError).Timeout {
-//		t.Fatalf("Unexpected error in Batch.CallTimeout(): [%s]", err)
+//		t.Fatalf("Unexpected error in Batch.callTimeout(): [%s]", err)
 //	}
 //
 //	for i := 0; i < N; i++ {
 //		r := results[i]
-//		if r.Error == nil {
+//		if r.err == nil {
 //			t.Fatalf("Unexpected nil error in batch result %d", i)
 //		}
-//		if !r.Error.(*ClientError).Timeout {
-//			t.Fatalf("Unexpected error in batch result %d: [%s]", i, r.Error)
+//		if !r.err.(*ClientError).Timeout {
+//			t.Fatalf("Unexpected error in batch result %d: [%s]", i, r.err)
 //		}
-//		if r.Response != nil {
-//			t.Fatalf("Unexpected response in batch result %d: %+v", i, r.Response)
+//		if r.resp != nil {
+//			t.Fatalf("Unexpected response in batch result %d: %+v", i, r.resp)
 //		}
 //
 //		select {
 //		case <-r.Done:
 //		default:
-//			t.Fatalf("%d BatchResult.Done must be unblocked after Batch.Call()", i)
+//			t.Fatalf("%d BatchResult.Done must be unblocked after Batch.call()", i)
 //		}
 //	}
 //}
@@ -1276,8 +1229,8 @@ func TestByteSlice(t *testing.T) {
 //	for i := 0; i < N; i++ {
 //		b.AddSkipResponse(i)
 //	}
-//	if err := b.Call(); err != nil {
-//		t.Fatalf("Unexpected error when calling Batch.CallTimeout(): [%s]", err)
+//	if err := b.call(); err != nil {
+//		t.Fatalf("Unexpected error when calling Batch.callTimeout(): [%s]", err)
 //	}
 //
 //	select {
@@ -1317,7 +1270,7 @@ func TestByteSlice(t *testing.T) {
 //
 //		select {
 //		case <-r.Done:
-//			t.Fatalf("%d. <-Done must be locked before Batch.Call()", i)
+//			t.Fatalf("%d. <-Done must be locked before Batch.call()", i)
 //		default:
 //		}
 //
@@ -1325,23 +1278,23 @@ func TestByteSlice(t *testing.T) {
 //
 //		b.AddSkipResponse(i + N)
 //	}
-//	if err := b.Call(); err != nil {
+//	if err := b.call(); err != nil {
 //		t.Fatalf("Unexpected error when calling batch rpcs: [%s]", err)
 //	}
 //
 //	for i := 0; i < N; i++ {
 //		r := results[i]
-//		if r.Error != nil {
-//			t.Fatalf("Unexpected error in batch result %d: [%s]", i, r.Error)
+//		if r.err != nil {
+//			t.Fatalf("Unexpected error in batch result %d: [%s]", i, r.err)
 //		}
-//		if r.Response.(int) != i {
-//			t.Fatalf("Unexpected response in batch result %d: %+v", i, r.Response)
+//		if r.resp.(int) != i {
+//			t.Fatalf("Unexpected response in batch result %d: %+v", i, r.resp)
 //		}
 //
 //		select {
 //		case <-r.Done:
 //		default:
-//			t.Fatalf("%d BatchResult.Done must be unblocked after Batch.Call()", i)
+//			t.Fatalf("%d BatchResult.Done must be unblocked after Batch.call()", i)
 //		}
 //	}
 //
