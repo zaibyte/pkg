@@ -516,7 +516,11 @@ func clientWriter(c *Client, w net.Conn,
 		header.method = ar.method
 		header.msgID = msgID
 		header.reqid = ar.reqid
-		header.bodySize = uint32(len(ar.reqData.Bytes()))
+		if ar.reqData != nil {
+			header.bodySize = uint32(len(ar.reqData.Bytes()))
+		} else {
+			header.bodySize = 0
+		}
 		header.oid = ar.oid
 		msg.header = header
 		msg.body = ar.reqData

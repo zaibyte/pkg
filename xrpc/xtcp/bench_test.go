@@ -82,7 +82,6 @@ func BenchmarkClient_Put(b *testing.B) {
 			if err != nil {
 				b.Fatalf("Unexpected error: %s", err)
 			}
-
 		}
 	})
 }

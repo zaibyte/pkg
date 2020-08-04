@@ -89,6 +89,15 @@ type Server struct {
 	// Default is DefaultBufferSize.
 	RecvBufferSize int
 
+	// The maximum delay between response flushes to clients.
+	//
+	// Negative values lead to immediate requests' sending to the client
+	// without their buffering. This minimizes rpc latency at the cost
+	// of higher CPU and network usage.
+	//
+	// Default is DefaultFlushDelay.
+	FlushDelay time.Duration
+
 	// The server obtains new client connections via Listener.Accept().
 	//
 	// Override the Listener if you want custom underlying transport
@@ -145,6 +154,9 @@ func (s *Server) Start() error {
 	}
 	if s.RecvBufferSize <= 0 {
 		s.RecvBufferSize = DefaultServerRecvBufferSize
+	}
+	if s.FlushDelay == 0 {
+		s.FlushDelay = DefaultFlushDelay
 	}
 
 	if s.Listener == nil {
@@ -429,10 +441,23 @@ func callHandlerWithRecover(s *Server, reqid uint64, method uint8, oid [16]byte,
 	return
 }
 
+func isServerStop(stopChan <-chan struct{}) bool {
+	select {
+	case <-stopChan:
+		return true
+	default:
+		return false
+	}
+}
+
 func serverWriter(s *Server, w net.Conn, responsesChan <-chan *serverMessage, stopChan <-chan struct{}, done chan<- struct{}) {
 	defer func() { close(done) }()
 
-	headerBuf := make([]byte, respHeaderSize)
+	t := time.NewTimer(s.FlushDelay)
+	var flushChan <-chan time.Time
+	enc := newEncoder(w, s.SendBufferSize)
+	msg := new(message)
+	header := new(respHeader)
 	for {
 		var m *serverMessage
 
@@ -446,20 +471,43 @@ func serverWriter(s *Server, w net.Conn, responsesChan <-chan *serverMessage, st
 			case <-stopChan:
 				return
 			case m = <-responsesChan:
+			case <-flushChan:
+				if err := enc.flush(); err != nil {
+					if !isServerStop(stopChan) {
+						xlog.Errorf("cannot flush requests to: %s: %s", w.RemoteAddr().String(), err)
+					}
+					return
+				}
+				flushChan = nil
+				continue
 			}
+		}
+
+		if flushChan == nil {
+			flushChan = getFlushChan(t, s.FlushDelay)
 		}
 
 		resp := m.resp
 		reqid := m.reqid
-		msgID := m.msgID
+
+		header.msgID = m.msgID
+		if resp != nil {
+			header.bodySize = uint32(len(resp.Bytes()))
+		} else {
+			header.bodySize = 0
+		}
+		header.errno = uint16(xrpc.ErrToErrno(m.err))
+		msg.header = header
+		msg.body = resp
 
 		m.reset()
 		serverMessagePool.Put(m)
 
-		if err := sendResp(w, msgID, m, headerBuf, s.SendBufferSize); err != nil {
-			xlog.ErrorIDf(reqid, "cannot send response to wire: %s", err)
+		if err := enc.encode(msg); err != nil {
+			xlog.ErrorIDf(reqid, "failed to send response to: %s: %s", w.RemoteAddr().String(), err)
 			return
 		}
+
 		if resp != nil {
 			_ = resp.Close()
 		}
