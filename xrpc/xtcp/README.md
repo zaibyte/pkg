@@ -8,25 +8,34 @@ Based on [goproc](https://github.com/valyala/gorpc) with these modifications:
 
 2. Implement End-to-End checksum.
 
-3. Use magic number to verify request.
+3. Add read/write deadline on each read/write.
 
-4. Add read/write deadline on each read/write.
+4. Add header.
 
-5. Add header.
+5. Import xlog for logging.
 
-6. Import xlog for logging.
+6. Replacing Gob encoding by binary encoding.
 
-7. Replacing Gob encoding by binary encoding.
+7. Remove batch supports
 
-8. Remove batch supports
+8. Remove public Async API
 
-9. Remove public Async API
+9. Client/Server reader will wait for a certain time to get header, if timeout it'll retry, avoiding hang.
 
 ## Performance Tuning
 
 The origin has tried its best to make things non-blocking.
 
+It's hard to compare directly, because the features of xtcp is limited. But use almost "same" benchmark test,
+xtcp gets 7-20x better than gorpc. (Both of them are using default configs)
+
 ### Done
+
+1. Binary encoding/decoding
+
+2. Reuse memory (pool for tiny bytes slice)
+
+...
 
 ### TODO
 
