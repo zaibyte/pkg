@@ -27,7 +27,7 @@ Based on [goproc](https://github.com/valyala/gorpc) with these modifications:
 The origin has tried its best to make things non-blocking.
 
 It's hard to compare directly, because the features of xtcp is limited. But use almost "same" benchmark test,
-xtcp gets 7-20x better than gorpc. (Both of them are using default configs)
+xtcp gets 3x better than gorpc. (Both of them are using same configs, including buffer size, client connections, flush delay)
 
 ### Done
 
