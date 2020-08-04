@@ -640,21 +640,6 @@ func clientReader(c *Client, r net.Conn, pendingRequests map[uint64]*asyncResult
 	}
 }
 
-func readRespHeader(r net.Conn, buf []byte, deadline time.Time) (err error) {
-	if err = r.SetReadDeadline(deadline); err != nil {
-		return err
-	}
-	if _, err = io.ReadFull(r, buf); err != nil {
-		operr, ok := err.(net.Error)
-		if ok && operr.Timeout() {
-			return xrpc.ErrTimeout
-		}
-		return err
-	}
-
-	return
-}
-
 var asyncResultPool sync.Pool
 
 func acquireAsyncResult() *asyncResult {

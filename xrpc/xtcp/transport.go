@@ -51,7 +51,6 @@ var (
 	handshake         = [1]byte{0x1}
 	dialTimeout       = 2 * time.Second
 	handshakeDuration = 2 * time.Second
-	headerDuration    = 2 * time.Second
 	readDuration      = 2 * time.Second
 	writeDuration     = 2 * time.Second
 	keepAlivePeriod   = 30 * time.Second

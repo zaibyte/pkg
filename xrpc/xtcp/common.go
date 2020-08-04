@@ -40,16 +40,8 @@
 package xtcp
 
 import (
-	"fmt"
-	"hash"
-	"io"
-	"net"
 	"sync"
 	"time"
-
-	"github.com/zaibyte/pkg/xerrors"
-
-	"github.com/zaibyte/pkg/xrpc"
 
 	"github.com/zaibyte/pkg/xlog"
 )
@@ -96,48 +88,6 @@ func releaseTimer(t *time.Timer) {
 	}
 
 	timerPool.Put(t)
-}
-
-func readBytes(r net.Conn, buf []byte, perRead int, encrypted bool, hash hash.Hash32, digest uint32) (err error) {
-
-	n := len(buf)
-	received := 0
-	var recvBuf []byte
-	if n < perRead {
-		recvBuf = buf[:n]
-	} else {
-		recvBuf = buf[:perRead]
-	}
-	toRead := n
-	deadline := time.Now()
-	for toRead > 0 {
-		deadline = deadline.Add(readDuration)
-		if err = r.SetReadDeadline(deadline); err != nil {
-			return fmt.Errorf("failed to set read deadline: %s, %s", r.RemoteAddr().String(), err.Error())
-		}
-
-		if _, err = io.ReadFull(r, recvBuf); err != nil {
-			return fmt.Errorf("failed to read: %s, %s", r.RemoteAddr().String(), err.Error())
-		}
-		if !encrypted {
-			hash.Write(recvBuf)
-		}
-		toRead -= len(recvBuf)
-		received += len(recvBuf)
-		if toRead < perRead {
-			recvBuf = buf[received : received+toRead]
-		} else {
-			recvBuf = buf[received : received+perRead]
-		}
-	}
-	if received != n {
-		return fmt.Errorf("unexpected received size: %d, but want %d", received, n)
-	}
-	actDigest := hash.Sum32()
-	if !encrypted && actDigest != digest {
-		return xerrors.WithMessage(xrpc.ErrChecksumMismatch, fmt.Sprintf("exp: %d, but: %d", digest, actDigest))
-	}
-	return
 }
 
 var closedFlushChan = make(chan time.Time)
