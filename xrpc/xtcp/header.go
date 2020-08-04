@@ -39,6 +39,12 @@ import (
 	"github.com/zaibyte/pkg/xdigest"
 )
 
+type header interface {
+	encode(b []byte) []byte
+	decode(b []byte) error
+	getBodySize() uint32
+}
+
 const reqHeaderSize = 25 + 16
 
 // reqHeader is the header for request.
@@ -90,14 +96,18 @@ func (h *reqHeader) decode(buf []byte) error {
 	return nil
 }
 
+func (h *reqHeader) getBodySize() uint32 {
+	return h.bodySize
+}
+
 const respHeaderSize = 18
 
 // respHeader is the header for response.
 type respHeader struct {
-	msgID uint64 // [0, 8)
-	errno uint16 // [8, 10)
-	size  uint32 // [10, 14)
-	crc   uint32 // [14, 18)
+	msgID    uint64 // [0, 8)
+	errno    uint16 // [8, 10)
+	bodySize uint32 // [10, 14)
+	crc      uint32 // [14, 18)
 }
 
 func (h *respHeader) encode(buf []byte) []byte {
@@ -106,7 +116,7 @@ func (h *respHeader) encode(buf []byte) []byte {
 	}
 	binary.BigEndian.PutUint64(buf[0:8], h.msgID)
 	binary.BigEndian.PutUint16(buf[8:10], h.errno)
-	binary.BigEndian.PutUint32(buf[10:14], h.size)
+	binary.BigEndian.PutUint32(buf[10:14], h.bodySize)
 	binary.BigEndian.PutUint32(buf[14:18], 0)
 	crc := xdigest.Checksum(buf[:respHeaderSize])
 	binary.BigEndian.PutUint32(buf[14:18], crc)
@@ -129,7 +139,11 @@ func (h *respHeader) decode(buf []byte) error {
 
 	h.msgID = binary.BigEndian.Uint64(buf[0:8])
 	h.errno = binary.BigEndian.Uint16(buf[8:10])
-	h.size = binary.BigEndian.Uint32(buf[10:14])
+	h.bodySize = binary.BigEndian.Uint32(buf[10:14])
 	h.crc = incoming
 	return nil
+}
+
+func (h *respHeader) getBodySize() uint32 {
+	return h.bodySize
 }

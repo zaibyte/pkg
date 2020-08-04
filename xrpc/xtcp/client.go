@@ -42,12 +42,15 @@ package xtcp
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/zaibyte/pkg/xerrors"
 
 	"github.com/templexxx/xhex"
 	"github.com/zaibyte/pkg/xstrconv"
@@ -107,6 +110,15 @@ type Client struct {
 	// Default value is DefaultClientRecvBufferSize.
 	RecvBufferSize int
 
+	// Delay between request flushes.
+	//
+	// Negative values lead to immediate requests' sending to the server
+	// without their buffering. This minimizes rpc latency at the cost
+	// of higher CPU and network usage.
+	//
+	// Default value is DefaultFlushDelay.
+	FlushDelay time.Duration
+
 	// The client calls this callback when it needs new connection
 	// to the server.
 	// The client passes Client.Addr into Dial().
@@ -136,9 +148,9 @@ type asyncResult struct {
 	method  uint8
 	reqid   uint64
 	oid     [16]byte
-	reqData []byte
+	reqData xrpc.Byteser
 
-	resp io.ReadCloser
+	respBody io.ReadCloser
 	// resp is become available after <-done unblocks.
 	done chan struct{}
 	// The error can be read only after <-Done unblocks.
@@ -196,6 +208,9 @@ func (c *Client) Start() error {
 	if c.RecvBufferSize <= 0 {
 		c.RecvBufferSize = DefaultClientRecvBufferSize
 	}
+	if c.FlushDelay == 0 {
+		c.FlushDelay = DefaultFlushDelay
+	}
 
 	c.requestsChan = make(chan *asyncResult, c.PendingRequests)
 	c.stopChan = make(chan struct{})
@@ -226,18 +241,18 @@ func (c *Client) Stop() error {
 }
 
 // Put puts object to the ZBuf node which Objecter connected.
-func (c *Client) Put(reqid uint64, oid string, objData []byte, timeout time.Duration) error {
+func (c *Client) PutObj(reqid uint64, oid string, objData xrpc.Byteser, timeout time.Duration) error {
 	_, err := c.callTimeout(reqid, objPutMethod, oid, objData, timeout)
 	return err
 }
 
 // Get gets object from the ZBuf node which Objecter connected.
-func (c *Client) Get(reqid uint64, oid string, timeout time.Duration) (obj io.ReadCloser, err error) {
+func (c *Client) GetObj(reqid uint64, oid string, timeout time.Duration) (obj io.ReadCloser, err error) {
 	return c.callTimeout(reqid, objGetMethod, oid, nil, timeout)
 }
 
 // Delete deletes object in the ZBuf node which Objecter connected.
-func (c *Client) Delete(reqid uint64, oid string, timeout time.Duration) error {
+func (c *Client) DeleteObj(reqid uint64, oid string, timeout time.Duration) error {
 	_, err := c.callTimeout(reqid, objDelMethod, oid, nil, timeout)
 	return err
 }
@@ -248,7 +263,7 @@ func (c *Client) Delete(reqid uint64, oid string, timeout time.Duration) error {
 // Returns non-nil error if the response cannot be obtained.
 //
 // Don't forget starting the client with Client.Start() before calling Client.call().
-func (c *Client) callTimeout(reqid uint64, method uint8, oid string, data []byte, timeout time.Duration) (resp io.ReadCloser, err error) {
+func (c *Client) callTimeout(reqid uint64, method uint8, oid string, data xrpc.Byteser, timeout time.Duration) (resp io.ReadCloser, err error) {
 
 	if timeout == 0 {
 		timeout = c.RequestTimeout
@@ -269,7 +284,7 @@ func (c *Client) callTimeout(reqid uint64, method uint8, oid string, data []byte
 
 	select {
 	case <-ar.done:
-		resp, err = ar.resp, ar.err
+		resp, err = ar.respBody, ar.err
 		releaseAsyncResult(ar)
 	case <-t.C:
 		// cancel will be captured in write preparation, asyncResult will be released there.
@@ -282,7 +297,7 @@ func (c *Client) callTimeout(reqid uint64, method uint8, oid string, data []byte
 	return
 }
 
-func (c *Client) callAsync(reqid uint64, method uint8, oid [16]byte, data []byte) (ar *asyncResult, err error) {
+func (c *Client) callAsync(reqid uint64, method uint8, oid [16]byte, data xrpc.Byteser) (ar *asyncResult, err error) {
 
 	if reqid == 0 {
 		reqid = uid.MakeReqID()
@@ -439,8 +454,12 @@ func clientWriter(c *Client, w net.Conn,
 	var err error
 	defer func() { done <- err }()
 
-	buf := make([]byte, reqHeaderSize)
+	t := time.NewTimer(c.FlushDelay)
+	var flushChan <-chan time.Time
+	enc := newEncoder(w, c.SendBufferSize)
 	var msgID uint64 = 1
+	msg := new(message)
+	header := new(reqHeader)
 	for {
 		var ar *asyncResult
 
@@ -454,7 +473,18 @@ func clientWriter(c *Client, w net.Conn,
 			case <-stopChan:
 				return
 			case ar = <-c.requestsChan:
+			case <-flushChan:
+				if err = enc.flush(); err != nil {
+					err = fmt.Errorf("cannot flush requests to: %s: %s", c.Addr, err)
+					return
+				}
+				flushChan = nil
+				continue
 			}
+		}
+
+		if flushChan == nil {
+			flushChan = getFlushChan(t, c.FlushDelay)
 		}
 
 		if ar.isCanceled() {
@@ -479,60 +509,23 @@ func clientWriter(c *Client, w net.Conn,
 			return
 		}
 
-		err = sendRequest(w, ar, msgID, buf, c.SendBufferSize)
-		if err != nil {
+		if ar.done == nil {
+			releaseAsyncResult(ar)
+		}
+
+		header.method = ar.method
+		header.msgID = msgID
+		header.reqid = ar.reqid
+		header.bodySize = uint32(len(ar.reqData.Bytes()))
+		header.oid = ar.oid
+		msg.header = header
+		msg.body = ar.reqData
+
+		if err = enc.encode(msg); err != nil {
+			xlog.ErrorIDf(ar.reqid, "failed to send request to: %s: %s", c.Addr, err)
 			return
 		}
 	}
-}
-
-func sendRequest(w net.Conn, ar *asyncResult, msgID uint64, headerBuf []byte, perWrite int) (err error) {
-
-	reqid := ar.reqid
-	n := uint32(len(ar.reqData))
-	h := &reqHeader{
-		method:   ar.method,
-		msgID:    msgID,
-		reqid:    reqid,
-		bodySize: n,
-		oid:      ar.oid,
-	}
-	h.encode(headerBuf)
-
-	// If the body is tiny, don't need call two times write.
-	// Although we have to use memory copy, but the cost is still much lower than two write calls.
-	if len(headerBuf)+int(n) < xrpc.MaxBytesSizeInPool {
-		b := xrpc.GetBytes()
-		_, _ = b.Write(headerBuf)
-		_, _ = b.Write(ar.reqData)
-		defer b.Close()
-
-		var deadline time.Time
-		err = sendBytes(w, b.Bytes(), perWrite, deadline) // Only put need it, and object has digest, no need calc checksum.
-		if err != nil {
-			xlog.ErrorIDf(reqid, "failed to send req data: %s", err)
-			err = xrpc.ErrConnection
-			return
-		}
-		return
-	}
-
-	deadline := time.Now().Add(headerDuration) // TODO create a time.Time pool
-	err = sendHeader(w, headerBuf, deadline)
-	if err != nil {
-		xlog.ErrorIDf(reqid, "failed to send header: %s", err)
-		err = xrpc.ErrConnection
-		return
-	}
-
-	err = sendBytes(w, ar.reqData, perWrite, deadline) // Only put need it, and object has digest, no need calc checksum.
-	if err != nil {
-		xlog.ErrorIDf(reqid, "failed to send req data: %s", err)
-		err = xrpc.ErrConnection
-		return
-	}
-
-	return nil
 }
 
 func sendHeader(w net.Conn, buf []byte, deadline time.Time) error {
@@ -578,28 +571,29 @@ func clientReader(c *Client, r net.Conn, pendingRequests map[uint64]*asyncResult
 		done <- err
 	}()
 
-	headerBuf := make([]byte, respHeaderSize)
+	hash := xdigest.New()
+	if c.encrypted {
+		hash = nil
+	}
+	dec := newDecoder(r, c.RecvBufferSize, hash)
+	resp := &message{
+		header: new(respHeader),
+	}
 	for {
-		deadline := time.Now().Add(headerDuration)
-		err = readRespHeader(r, headerBuf, deadline)
+		err := dec.decode(resp)
 		if err != nil {
 			if err == xrpc.ErrTimeout {
-				continue // Keeping trying to read response header.
+				continue // Keeping trying to read request header.
 			}
-			xlog.Errorf("failed to read response header from %s: %s", c.Addr, err.Error())
+			xlog.Errorf("failed to read request from %s: %s", r.RemoteAddr().String(), err)
 			return
 		}
 
-		h := new(respHeader)
-		err = h.decode(headerBuf)
-		if err != nil {
-			xlog.Errorf("failed to decode response header from %s: %s", c.Addr, err.Error())
-			return
-		}
+		h := resp.header.(*respHeader)
 
 		msgID := h.msgID
 		errno := h.errno
-		n := h.size
+		n := h.bodySize
 
 		pendingRequestsLock.Lock()
 		ar, ok := pendingRequests[msgID]
@@ -614,6 +608,18 @@ func clientReader(c *Client, r net.Conn, pendingRequests map[uint64]*asyncResult
 			return
 		}
 
+		digest := binary.LittleEndian.Uint32(ar.oid[8:12])
+		if !c.encrypted && n != 0 {
+			actDigest := hash.Sum32()
+			if actDigest != digest {
+				xlog.ErrorID(ar.reqid, xerrors.WithMessage(xrpc.ErrChecksumMismatch, fmt.Sprintf("response exp: %d, but: %d", digest, actDigest)).Error())
+				ar.err = xrpc.ErrChecksumMismatch
+				close(ar.done)
+				return
+			}
+		}
+		hash.Reset()
+
 		if errno != 0 {
 			ar.err = xrpc.Errno(errno)
 			close(ar.done)
@@ -625,43 +631,7 @@ func clientReader(c *Client, r net.Conn, pendingRequests map[uint64]*asyncResult
 			continue
 		}
 
-		digest := binary.LittleEndian.Uint32(ar.oid[8:12])
-		xd := xdigest.New()
-		var resp xrpc.Byteser
-
-		if n > xrpc.MaxBytesSizeInPool {
-			resp = &xrpc.BytesBuffer{
-				S: make([]byte, n),
-			}
-			buf := resp.Bytes()
-			err = readBytes(r, buf, c.RecvBufferSize, c.encrypted, xd, digest)
-			if err != nil {
-				xlog.ErrorID(ar.reqid, err.Error())
-				if err != xrpc.ErrChecksumMismatch {
-					err = xrpc.ErrConnection
-				}
-				ar.err = err
-				close(ar.done)
-				return
-			}
-		} else {
-			bs := xrpc.GetBytes()
-			buf := bs.Bytes()[:n]
-			err = readBytes(r, buf, c.RecvBufferSize, c.encrypted, xd, digest)
-			if err != nil {
-				xlog.ErrorIDf(ar.reqid, "failed to read response body: %s", err)
-				if err != xrpc.ErrChecksumMismatch {
-					err = xrpc.ErrConnection
-				}
-				ar.err = err
-				close(ar.done)
-				return
-			}
-			bs.S = buf // For BytesBufferPool we need replace the old bytes slice.
-			resp = bs
-		}
-
-		ar.resp = resp
+		ar.respBody = resp.body
 		close(ar.done)
 	}
 }
@@ -697,7 +667,7 @@ func releaseAsyncResult(ar *asyncResult) {
 	ar.oid = [16]byte{}
 	ar.reqData = nil
 
-	ar.resp = nil
+	ar.respBody = nil
 	ar.done = nil
 	ar.err = nil
 

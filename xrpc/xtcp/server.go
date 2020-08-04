@@ -42,12 +42,13 @@ package xtcp
 import (
 	"encoding/binary"
 	"fmt"
-	"io"
 	"net"
 	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/zaibyte/pkg/xerrors"
 
 	"github.com/zaibyte/pkg/xdigest"
 
@@ -286,7 +287,7 @@ type serverMessage struct {
 	reqid    uint64
 	oid      [16]byte
 	bodySize uint32
-	reqData  xrpc.Byteser
+	reqbody  xrpc.Byteser
 
 	resp xrpc.Byteser
 	err  error
@@ -302,7 +303,7 @@ func (s *serverMessage) reset() {
 	s.method = 0
 	s.msgID = 0
 	s.reqid = 0
-	s.reqData = nil
+	s.reqbody = nil
 
 	s.resp = nil
 	s.err = nil
@@ -318,25 +319,25 @@ func serverReader(s *Server, r net.Conn, responsesChan chan<- *serverMessage,
 		close(done)
 	}()
 
-	headerBuf := make([]byte, reqHeaderSize)
+	hash := xdigest.New()
+	if s.encrypted {
+		hash = nil
+	}
+	dec := newDecoder(r, s.RecvBufferSize, hash)
+	req := &message{
+		header: new(reqHeader),
+	}
 	for {
-		deadline := time.Now().Add(headerDuration)
-		err := readReqHeader(r, headerBuf, deadline)
+		err := dec.decode(req)
 		if err != nil {
 			if err == xrpc.ErrTimeout {
 				continue // Keeping trying to read request header.
 			}
-			xlog.Errorf("failed to read request header from %s: %s", r.RemoteAddr().String(), err)
+			xlog.Errorf("failed to read request from %s: %s", r.RemoteAddr().String(), err)
 			return
 		}
 
-		h := new(reqHeader)
-		err = h.decode(headerBuf)
-		if err != nil {
-			xlog.Errorf("failed to decode request header from %s: %s", r.RemoteAddr().String(), err.Error())
-			return
-		}
-
+		h := req.header.(*reqHeader)
 		m := serverMessagePool.Get().(*serverMessage)
 		m.method = h.method
 		m.msgID = h.msgID
@@ -344,49 +345,22 @@ func serverReader(s *Server, r net.Conn, responsesChan chan<- *serverMessage,
 		m.oid = h.oid
 		m.bodySize = h.bodySize
 
-		n := m.bodySize
-
-		if n == 0 {
-			go serveRequest(s, responsesChan, stopChan, m, workersCh)
-			continue
-		}
-
 		digest := binary.LittleEndian.Uint32(m.oid[8:12])
-		xd := xdigest.New()
-		var req xrpc.Byteser
 
-		if n > xrpc.MaxBytesSizeInPool {
-			req = &xrpc.BytesBuffer{
-				S: make([]byte, n),
-			}
-			buf := req.Bytes()
-			err = readBytes(r, buf, s.RecvBufferSize, s.encrypted, xd, digest)
-			if err != nil {
-				xlog.ErrorIDf(m.reqid, "failed to read request body: %s", err)
-				if err != xrpc.ErrChecksumMismatch {
-					err = xrpc.ErrConnection
+		if !s.encrypted && m.bodySize != 0 {
+			actDigest := hash.Sum32()
+			if actDigest != digest {
+				xlog.ErrorID(m.reqid, xerrors.WithMessage(xrpc.ErrChecksumMismatch, fmt.Sprintf("request exp: %d, but: %d", digest, actDigest)).Error())
+				m.err = xrpc.ErrChecksumMismatch
+				if req.body != nil {
+					_ = req.body.Close()
 				}
-				m.reset()
-				serverMessagePool.Put(m)
-				return
 			}
-		} else {
-			bs := xrpc.GetBytes()
-			buf := bs.Bytes()[:n]
-			err = readBytes(r, buf, s.RecvBufferSize, s.encrypted, xd, digest)
-			if err != nil {
-				xlog.ErrorIDf(m.reqid, "failed to read request body: %s", err)
-				if err != xrpc.ErrChecksumMismatch {
-					err = xrpc.ErrConnection
-				}
-				m.reset()
-				serverMessagePool.Put(m)
-				return
-			}
-			bs.S = buf // For BytesBufferPool we need replace the old bytes slice.
-			req = bs
 		}
-		m.reqData = req
+		if m.err == nil {
+			m.reqbody = req.body
+		}
+		hash.Reset()
 
 		select {
 		case workersCh <- struct{}{}:
@@ -403,32 +377,19 @@ func serverReader(s *Server, r net.Conn, responsesChan chan<- *serverMessage,
 	}
 }
 
-func readReqHeader(r net.Conn, buf []byte, deadline time.Time) (err error) {
-	if err = r.SetReadDeadline(deadline); err != nil {
-		err = xrpc.ErrConnection
-		return
-	}
-	if _, err = io.ReadFull(r, buf); err != nil {
-		operr, ok := err.(net.Error)
-		if ok && operr.Timeout() {
-			return xrpc.ErrTimeout
-		}
-		return xrpc.ErrConnection
-	}
-
-	return
-}
-
 func serveRequest(s *Server, responsesChan chan<- *serverMessage, stopChan <-chan struct{}, m *serverMessage, workersCh <-chan struct{}) {
-	reqData := m.reqData
-	resp, err := callHandlerWithRecover(s, m.reqid, m.method, m.oid, reqData)
 
-	if reqData != nil {
-		_ = m.reqData.Close()
+	if m.err == nil {
+		reqBody := m.reqbody
+		resp, err := callHandlerWithRecover(s, m.reqid, m.method, m.oid, reqBody)
+		m.resp = resp
+		m.err = err
 	}
-	m.reqData = nil
-	m.resp = resp
-	m.err = err
+
+	if m.reqbody != nil {
+		_ = m.reqbody.Close()
+	}
+	m.reqbody = nil
 
 	// Select hack for better performance.
 	// See https://github.com/valyala/gorpc/pull/1 for details.
@@ -512,9 +473,9 @@ func sendResp(w net.Conn, msgID uint64, m *serverMessage, headerBuf []byte, perW
 		n = uint32(len(m.resp.Bytes()))
 	}
 	h := &respHeader{
-		msgID: msgID,
-		errno: uint16(xrpc.ErrToErrno(m.err)),
-		size:  n,
+		msgID:    msgID,
+		errno:    uint16(xrpc.ErrToErrno(m.err)),
+		bodySize: n,
 	}
 	h.encode(headerBuf)
 

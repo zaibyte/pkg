@@ -22,6 +22,7 @@ import (
 type Byteser interface {
 	io.ReadWriteCloser
 	Bytes() []byte
+	Set(b []byte)
 }
 
 const MaxBytesSizeInPool = 32 * 1024 // by default, create 32 KiB buffers.
@@ -58,6 +59,11 @@ func (r *BytesBuffer) Close() error {
 // Implements Byteser.
 func (r *BytesBuffer) Bytes() []byte {
 	return r.S
+}
+
+// Set sets b as underlying byte slice.
+func (r *BytesBuffer) Set(b []byte) {
+	r.S = b
 }
 
 var (
@@ -128,6 +134,11 @@ func (r *BytesBufferPool) Close() error {
 // Implements Byteser.
 func (r *BytesBufferPool) Bytes() []byte {
 	return r.S
+}
+
+// Set sets b as underlying byte slice.
+func (r *BytesBufferPool) Set(b []byte) {
+	r.S = b
 }
 
 // reset resets the underlying byte slice. Subsequent writes re-use the slice's

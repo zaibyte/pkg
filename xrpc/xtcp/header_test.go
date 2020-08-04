@@ -88,9 +88,9 @@ func TestRequestHeaderCRCIsChecked(t *testing.T) {
 
 func TestRespHeaderCanBeEncodedAndDecoded(t *testing.T) {
 	r := &respHeader{
-		msgID: 2048,
-		errno: 22,
-		size:  1024,
+		msgID:    2048,
+		errno:    22,
+		bodySize: 1024,
 	}
 	buf := make([]byte, respHeaderSize)
 	result := r.encode(buf)
@@ -104,9 +104,9 @@ func TestRespHeaderCanBeEncodedAndDecoded(t *testing.T) {
 
 func TestRespHeaderCRCIsChecked(t *testing.T) {
 	r := &respHeader{
-		msgID: 2048,
-		errno: 22,
-		size:  1024,
+		msgID:    2048,
+		errno:    22,
+		bodySize: 1024,
 	}
 	buf := make([]byte, respHeaderSize)
 	result := r.encode(buf)

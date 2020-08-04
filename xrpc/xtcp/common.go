@@ -42,6 +42,7 @@ package xtcp
 import (
 	"fmt"
 	"hash"
+	"io"
 	"net"
 	"sync"
 	"time"
@@ -63,6 +64,10 @@ const (
 	// DefaultPendingMessages is the default number of pending messages
 	// handled by Client and Server.
 	DefaultPendingMessages = 32 * 1024
+
+	// DefaultFlushDelay is the default delay between message flushes
+	// on Client and Server.
+	DefaultFlushDelay = time.Microsecond * 100
 )
 
 var timerPool sync.Pool
@@ -110,18 +115,15 @@ func readBytes(r net.Conn, buf []byte, perRead int, encrypted bool, hash hash.Ha
 		if err = r.SetReadDeadline(deadline); err != nil {
 			return fmt.Errorf("failed to set read deadline: %s, %s", r.RemoteAddr().String(), err.Error())
 		}
-		rn, err := r.Read(recvBuf)
-		if err != nil {
+
+		if _, err = io.ReadFull(r, recvBuf); err != nil {
 			return fmt.Errorf("failed to read: %s, %s", r.RemoteAddr().String(), err.Error())
 		}
-		//if _, err = io.ReadFull(r, recvBuf); err != nil {
-		//	return fmt.Errorf("failed to read: %s, %s", r.RemoteAddr().String(), err.Error())
-		//}
 		if !encrypted {
-			hash.Write(recvBuf[:rn])
+			hash.Write(recvBuf)
 		}
-		toRead -= rn
-		received += rn
+		toRead -= len(recvBuf)
+		received += len(recvBuf)
 		if toRead < perRead {
 			recvBuf = buf[received : received+toRead]
 		} else {
@@ -136,4 +138,26 @@ func readBytes(r net.Conn, buf []byte, perRead int, encrypted bool, hash hash.Ha
 		return xerrors.WithMessage(xrpc.ErrChecksumMismatch, fmt.Sprintf("exp: %d, but: %d", digest, actDigest))
 	}
 	return
+}
+
+var closedFlushChan = make(chan time.Time)
+
+func init() {
+	close(closedFlushChan)
+}
+
+func getFlushChan(t *time.Timer, flushDelay time.Duration) <-chan time.Time {
+	if flushDelay <= 0 {
+		return closedFlushChan
+	}
+
+	if !t.Stop() {
+		// Exhaust expired timer's chan.
+		select {
+		case <-t.C:
+		default:
+		}
+	}
+	t.Reset(flushDelay)
+	return t.C
 }
