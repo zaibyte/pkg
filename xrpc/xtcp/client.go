@@ -486,7 +486,7 @@ func clientWriter(c *Client, w net.Conn,
 	}
 }
 
-func sendRequest(w net.Conn, ar *asyncResult, msgID uint64, buf []byte, perWrite int) (err error) {
+func sendRequest(w net.Conn, ar *asyncResult, msgID uint64, headerBuf []byte, perWrite int) (err error) {
 
 	reqid := ar.reqid
 	n := uint32(len(ar.reqData))
@@ -497,16 +497,31 @@ func sendRequest(w net.Conn, ar *asyncResult, msgID uint64, buf []byte, perWrite
 		bodySize: n,
 		oid:      ar.oid,
 	}
-	h.encode(buf)
-	deadline := time.Now().Add(headerDuration) // TODO create a time.Time pool
-	err = sendHeader(w, buf, deadline)
-	if err != nil {
-		xlog.ErrorIDf(reqid, "failed to send header: %s", err)
-		err = xrpc.ErrConnection
+	h.encode(headerBuf)
+
+	// If the body is tiny, don't need call two times write.
+	// Although we have to use memory copy, but the cost is still much lower than two write calls.
+	if len(headerBuf)+int(n) < xrpc.MaxBytesSizeInPool {
+		b := xrpc.GetBytes()
+		_, _ = b.Write(headerBuf)
+		_, _ = b.Write(ar.reqData)
+		defer b.Close()
+
+		var deadline time.Time
+		err = sendBytes(w, b.Bytes(), perWrite, deadline) // Only put need it, and object has digest, no need calc checksum.
+		if err != nil {
+			xlog.ErrorIDf(reqid, "failed to send req data: %s", err)
+			err = xrpc.ErrConnection
+			return
+		}
 		return
 	}
 
-	if n == 0 {
+	deadline := time.Now().Add(headerDuration) // TODO create a time.Time pool
+	err = sendHeader(w, headerBuf, deadline)
+	if err != nil {
+		xlog.ErrorIDf(reqid, "failed to send header: %s", err)
+		err = xrpc.ErrConnection
 		return
 	}
 
@@ -594,7 +609,7 @@ func clientReader(c *Client, r net.Conn, pendingRequests map[uint64]*asyncResult
 		pendingRequestsLock.Unlock()
 
 		if !ok {
-			xlog.ErrorIDf(ar.reqid, "unexpected msgID: %d obtained from: %s", msgID, c.Addr)
+			xlog.Errorf("unexpected msgID: %d obtained from: %s", msgID, c.Addr)
 			err = xrpc.ErrInternalServer
 			return
 		}
@@ -634,7 +649,7 @@ func clientReader(c *Client, r net.Conn, pendingRequests map[uint64]*asyncResult
 			buf := bs.Bytes()[:n]
 			err = readBytes(r, buf, c.RecvBufferSize, c.encrypted, xd, digest)
 			if err != nil {
-				xlog.ErrorID(ar.reqid, err.Error())
+				xlog.ErrorIDf(ar.reqid, "failed to read response body: %s", err)
 				if err != xrpc.ErrChecksumMismatch {
 					err = xrpc.ErrConnection
 				}
@@ -653,15 +668,14 @@ func clientReader(c *Client, r net.Conn, pendingRequests map[uint64]*asyncResult
 
 func readRespHeader(r net.Conn, buf []byte, deadline time.Time) (err error) {
 	if err = r.SetReadDeadline(deadline); err != nil {
-		err = xrpc.ErrConnection
-		return
+		return err
 	}
 	if _, err = io.ReadFull(r, buf); err != nil {
 		operr, ok := err.(net.Error)
 		if ok && operr.Timeout() {
 			return xrpc.ErrTimeout
 		}
-		return xrpc.ErrConnection
+		return err
 	}
 
 	return

@@ -88,8 +88,6 @@ type Server struct {
 	// Default is DefaultBufferSize.
 	RecvBufferSize int
 
-	SendPayloadSize int
-
 	// The server obtains new client connections via Listener.Accept().
 	//
 	// Override the Listener if you want custom underlying transport
@@ -121,8 +119,6 @@ const (
 	DefaultServerSendBufferSize = 64 * 1024
 	// DefaultServerRecvBufferSize is the default size for Server receive buffers.
 	DefaultServerRecvBufferSize = 64 * 1024
-	// DefaultServerSendPayloadSize is the default size for Client write payload buffers.
-	DefaultServerSendPayloadSize = 512 * 1024
 )
 
 // Start starts rpc server.
@@ -148,9 +144,6 @@ func (s *Server) Start() error {
 	}
 	if s.RecvBufferSize <= 0 {
 		s.RecvBufferSize = DefaultServerRecvBufferSize
-	}
-	if s.SendPayloadSize <= 0 {
-		s.SendPayloadSize = DefaultServerSendPayloadSize
 	}
 
 	if s.Listener == nil {
@@ -197,7 +190,7 @@ func serverHandler(s *Server, workersCh chan struct{}) {
 		acceptChan := make(chan struct{})
 		go func() {
 			if conn, err = s.Listener.Accept(); err != nil {
-				xlog.Error(err.Error())
+				xlog.Errorf("failed to accept: %s", err.Error())
 				if stopping.Load() == nil {
 					xlog.Errorf("cannot accept new connection: %s", err)
 				}
@@ -247,7 +240,7 @@ func serverHandleConnection(s *Server, conn net.Conn, workersCh chan struct{}) {
 
 	select {
 	case ok := <-okHandshake:
-		if !ok {
+		if !ok || err != nil {
 			_ = conn.Close()
 			return
 		}
@@ -369,7 +362,7 @@ func serverReader(s *Server, r net.Conn, responsesChan chan<- *serverMessage,
 			buf := req.Bytes()
 			err = readBytes(r, buf, s.RecvBufferSize, s.encrypted, xd, digest)
 			if err != nil {
-				xlog.ErrorID(m.reqid, err.Error())
+				xlog.ErrorIDf(m.reqid, "failed to read request body: %s", err)
 				if err != xrpc.ErrChecksumMismatch {
 					err = xrpc.ErrConnection
 				}
@@ -382,7 +375,7 @@ func serverReader(s *Server, r net.Conn, responsesChan chan<- *serverMessage,
 			buf := bs.Bytes()[:n]
 			err = readBytes(r, buf, s.RecvBufferSize, s.encrypted, xd, digest)
 			if err != nil {
-				xlog.ErrorID(m.reqid, err.Error())
+				xlog.ErrorIDf(m.reqid, "failed to read request body: %s", err)
 				if err != xrpc.ErrChecksumMismatch {
 					err = xrpc.ErrConnection
 				}
@@ -497,38 +490,57 @@ func serverWriter(s *Server, w net.Conn, responsesChan <-chan *serverMessage, st
 
 		resp := m.resp
 		reqid := m.reqid
+		msgID := m.msgID
 
 		m.reset()
 		serverMessagePool.Put(m)
 
-		if err := sendResp(w, m, headerBuf, s.SendBufferSize); err != nil {
+		if err := sendResp(w, msgID, m, headerBuf, s.SendBufferSize); err != nil {
 			xlog.ErrorIDf(reqid, "cannot send response to wire: %s", err)
 			return
 		}
-		_ = resp.Close()
+		if resp != nil {
+			_ = resp.Close()
+		}
 	}
 }
 
-func sendResp(w net.Conn, m *serverMessage, headerBuf []byte, perWrite int) (err error) {
+func sendResp(w net.Conn, msgID uint64, m *serverMessage, headerBuf []byte, perWrite int) (err error) {
 
-	n := m.bodySize
+	var n uint32 = 0
+	if m.resp != nil {
+		n = uint32(len(m.resp.Bytes()))
+	}
 	h := &respHeader{
-		msgID: m.msgID,
+		msgID: msgID,
 		errno: uint16(xrpc.ErrToErrno(m.err)),
 		size:  n,
 	}
 	h.encode(headerBuf)
+
+	// If the body is tiny, don't need call two times write.
+	// Although we have to use memory copy, but the cost is still much lower than two write calls.
+	if len(headerBuf)+int(n) < xrpc.MaxBytesSizeInPool && n != 0 {
+		b := xrpc.GetBytes()
+		_, _ = b.Write(headerBuf)
+		_, _ = b.Write(m.resp.Bytes())
+		defer b.Close()
+
+		var deadline time.Time
+		return sendBytes(w, b.Bytes(), perWrite, deadline)
+	}
+
 	deadline := time.Now().Add(headerDuration) // TODO create a time.Time pool
 	err = sendHeader(w, headerBuf, deadline)
 	if err != nil {
 		return
 	}
 
-	if n == 0 {
+	if m.resp == nil {
 		return
 	}
 
-	err = sendBytes(w, m.resp.Bytes(), perWrite, deadline) // Only put need it, and object has digest, no need calc checksum.
+	err = sendBytes(w, m.resp.Bytes(), perWrite, deadline)
 	if err != nil {
 		return
 	}

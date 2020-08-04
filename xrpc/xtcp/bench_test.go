@@ -39,43 +39,79 @@
 
 package xtcp
 
-//func BenchmarkZtcpByteSlice(b *testing.B) {
-//	addr := getRandomAddr()
-//
-//	r := NewRouter()
-//	r.AddFunc(1, bytesHandlerFunc)
-//
-//	s := NewServer(addr, r, nil)
-//	if err := s.Start(); err != nil {
-//		b.Fatalf("cannot start server: %s", err)
-//	}
-//	defer s.Stop()
-//
-//	c := NewClient(addr, nil)
-//	r.AddToClient(c)
-//	c.Start()
-//	defer c.Stop()
-//
-//	req := make([]byte, 4096)
-//	rand.Read(req)
-//	xbuf := xrpc.GetBytes()
-//	defer xbuf.Free()
-//	xbuf.Write(req)
-//	b.SetParallelism(250)
-//	b.ResetTimer()
-//	b.RunParallel(func(pb *testing.PB) {
-//		for i := 0; pb.Next(); i++ {
-//			resp := xrpc.GetBytes()
-//			err := c.call(uid.MakeReqID(), 1, nil, resp, xbuf)
-//			if err != nil {
-//				b.Fatalf("Unexpected error: %s", err)
-//			}
-//
-//			if !bytes.Equal(resp.Bytes(), req) {
-//				b.Fatal("Unexpected response")
-//			}
-//
-//			resp.Free()
-//		}
-//	})
-//}
+import (
+	"math/rand"
+	"testing"
+	"time"
+
+	"github.com/zaibyte/pkg/uid"
+	"github.com/zaibyte/pkg/xdigest"
+)
+
+func BenchmarkClient_Put(b *testing.B) {
+
+	rand.Seed(time.Now().UnixNano())
+
+	addr := getRandomAddr()
+
+	s := NewServer(addr, nil, testPutFunc, testGetFunc, testDeleteFunc)
+	if err := s.Start(); err != nil {
+		b.Fatalf("cannot start server: %s", err)
+	}
+	defer s.Stop()
+
+	c := NewClient(addr, nil)
+	c.Start()
+	defer c.Stop()
+
+	req := make([]byte, 4096)
+	rand.Read(req)
+	digest := xdigest.Sum32(req)
+	_, oid := uid.MakeOID(1, 1, digest, 4096, uid.NormalObj)
+
+	b.SetParallelism(256)
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for i := 0; pb.Next(); i++ {
+			err := c.Put(uid.MakeReqID(), oid, req, 0)
+			if err != nil {
+				b.Fatalf("Unexpected error: %s", err)
+			}
+
+		}
+	})
+}
+
+func BenchmarkClient_Delete(b *testing.B) {
+
+	rand.Seed(time.Now().UnixNano())
+
+	addr := getRandomAddr()
+
+	s := NewServer(addr, nil, testPutFunc, testGetFunc, testDeleteFunc)
+	if err := s.Start(); err != nil {
+		b.Fatalf("cannot start server: %s", err)
+	}
+	defer s.Stop()
+
+	c := NewClient(addr, nil)
+	c.Start()
+	defer c.Stop()
+
+	req := make([]byte, 4096)
+	rand.Read(req)
+	digest := xdigest.Sum32(req)
+	_, oid := uid.MakeOID(1, 1, digest, 4096, uid.NormalObj)
+
+	b.SetParallelism(256)
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for i := 0; pb.Next(); i++ {
+			err := c.Delete(uid.MakeReqID(), oid, 0)
+			if err != nil {
+				b.Fatalf("Unexpected error: %s", err)
+			}
+
+		}
+	})
+}

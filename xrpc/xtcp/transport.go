@@ -142,6 +142,9 @@ type Listener interface {
 	// Close is called.
 	// All subsequent calls to Accept() must immediately return error.
 	Close() error
+
+	// Addr returns the listener's network address.
+	ListenAddr() net.Addr
 }
 
 type defaultListener struct {
@@ -172,6 +175,13 @@ func (ln *defaultListener) Accept() (conn net.Conn, err error) {
 
 func (ln *defaultListener) Close() error {
 	return ln.L.Close()
+}
+
+func (ln *defaultListener) ListenAddr() net.Addr {
+	if ln.L != nil {
+		return ln.L.Addr()
+	}
+	return nil
 }
 
 func setTCPConn(conn *net.TCPConn) error {

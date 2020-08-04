@@ -42,10 +42,11 @@ package xtcp
 import (
 	"fmt"
 	"hash"
-	"io"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/zaibyte/pkg/xerrors"
 
 	"github.com/zaibyte/pkg/xrpc"
 
@@ -109,14 +110,18 @@ func readBytes(r net.Conn, buf []byte, perRead int, encrypted bool, hash hash.Ha
 		if err = r.SetReadDeadline(deadline); err != nil {
 			return fmt.Errorf("failed to set read deadline: %s, %s", r.RemoteAddr().String(), err.Error())
 		}
-		if _, err = io.ReadFull(r, recvBuf); err != nil {
+		rn, err := r.Read(recvBuf)
+		if err != nil {
 			return fmt.Errorf("failed to read: %s, %s", r.RemoteAddr().String(), err.Error())
 		}
+		//if _, err = io.ReadFull(r, recvBuf); err != nil {
+		//	return fmt.Errorf("failed to read: %s, %s", r.RemoteAddr().String(), err.Error())
+		//}
 		if !encrypted {
-			hash.Write(recvBuf)
+			hash.Write(recvBuf[:rn])
 		}
-		toRead -= len(recvBuf)
-		received += len(recvBuf)
+		toRead -= rn
+		received += rn
 		if toRead < perRead {
 			recvBuf = buf[received : received+toRead]
 		} else {
@@ -126,8 +131,9 @@ func readBytes(r net.Conn, buf []byte, perRead int, encrypted bool, hash hash.Ha
 	if received != n {
 		return fmt.Errorf("unexpected received size: %d, but want %d", received, n)
 	}
-	if !encrypted && hash.Sum32() != digest {
-		return xrpc.ErrChecksumMismatch
+	actDigest := hash.Sum32()
+	if !encrypted && actDigest != digest {
+		return xerrors.WithMessage(xrpc.ErrChecksumMismatch, fmt.Sprintf("exp: %d, but: %d", digest, actDigest))
 	}
 	return
 }

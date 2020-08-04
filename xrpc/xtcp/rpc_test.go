@@ -46,9 +46,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zaibyte/pkg/xrpc"
-
 	_ "github.com/zaibyte/pkg/xlog/xlogtest"
+	"github.com/zaibyte/pkg/xrpc"
 )
 
 // TODO create a map to keep put obj
