@@ -52,6 +52,7 @@ func (r *BytesBuffer) Write(b []byte) (n int, err error) {
 
 // Close implements the io.Closer interface.
 func (r *BytesBuffer) Close() error {
+	r.S = nil // Release the byte slice.
 	return nil
 }
 
@@ -61,15 +62,24 @@ func (r *BytesBuffer) Bytes() []byte {
 	return r.S
 }
 
-// Set sets b as underlying byte slice.
+// Set sets b as underlying byte slice and reset read index.
 func (r *BytesBuffer) Set(b []byte) {
 	r.S = b
+	r.i = 0
 }
 
 var (
 	_bufferPool = newBufferPool()
 	// GetBytes retrieves a buffer from the buffer pool, creating one if necessary.
-	GetBytes = _bufferPool.Get
+	GetBytes  = _bufferPool.Get
+	GetNBytes = func(n int) Byteser {
+		if n <= MaxBytesSizeInPool {
+			return GetBytes()
+		}
+		return &BytesBuffer{
+			S: make([]byte, 0, n),
+		}
+	}
 )
 
 // A bufferPool is a type-safe wrapper around a sync.bufferPool.
@@ -136,13 +146,15 @@ func (r *BytesBufferPool) Bytes() []byte {
 	return r.S
 }
 
-// Set sets b as underlying byte slice.
+// Set sets b as underlying byte slice and reset read index.
 func (r *BytesBufferPool) Set(b []byte) {
 	r.S = b
+	r.i = 0
 }
 
 // reset resets the underlying byte slice. Subsequent writes re-use the slice's
 // backing array.
 func (r *BytesBufferPool) reset() {
 	r.S = r.S[:0]
+	r.i = 0
 }

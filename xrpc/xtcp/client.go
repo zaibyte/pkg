@@ -41,7 +41,6 @@ package xtcp
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -75,13 +74,6 @@ import (
 // them without valid reason.
 type Client struct {
 	// Server address to connect to.
-	//
-	// The address format depends on the underlying transport provided
-	// by Client.Dial. The following transports are provided out of the box:
-	//   * TCP - see NewTCPClient() and NewTCPServer().
-	//   * TLS - see NewTLSClient() and NewTLSServer().
-	//
-	// If created by NewClient(), it will chose transport automatically.
 	Addr string
 
 	// The number of concurrent connections the client should establish
@@ -93,7 +85,7 @@ type Client struct {
 	//
 	// The number of pending requests should exceed the expected number
 	// of concurrent goroutines calling client's methods.
-	// Otherwise a lot of ClientError.Overflow errors may appear.
+	// Otherwise a lot of xrpc.ErrRequestQueueOverflow errors may appear.
 	//
 	// Default is DefaultPendingMessages.
 	PendingRequests int
@@ -123,18 +115,11 @@ type Client struct {
 	// to the server.
 	// The client passes Client.Addr into Dial().
 	//
-	// Override this callback if you want custom underlying transport
-	// and/or authentication/authorization.
-	// Don't forget overriding Server.Listener accordingly.
-	//
-	//
-	// * NewTLSClient() and NewTLSServer() can be used for encrypted rpc.
-	// * NewUnixClient() and NewUnixServer() can be used for fast local
-	//   inter-process rpc.
-	//
 	// By default it returns TCP connections established to the Client.Addr.
 	Dial DialFunc
 
+	// If TLS is enabled, encrypted will be set true, otherwise it's false.
+	// When it's false, xtcp will check the request/response body by the checksum.
 	encrypted bool
 
 	requestsChan chan *asyncResult
@@ -148,9 +133,9 @@ type asyncResult struct {
 	method  uint8
 	reqid   uint64
 	oid     [16]byte
-	reqData xrpc.Byteser
+	reqData xrpc.Byteser // It only can be released after writing or writing failed.
 
-	respBody io.ReadCloser
+	respBody xrpc.Byteser
 	// resp is become available after <-done unblocks.
 	done chan struct{}
 	// The error can be read only after <-Done unblocks.
@@ -241,7 +226,7 @@ func (c *Client) Stop() error {
 }
 
 // Put puts object to the ZBuf node which Objecter connected.
-func (c *Client) PutObj(reqid uint64, oid string, objData xrpc.Byteser, timeout time.Duration) error {
+func (c *Client) PutObj(reqid uint64, oid string, objData []byte, timeout time.Duration) error {
 	_, err := c.callTimeout(reqid, objPutMethod, oid, objData, timeout)
 	return err
 }
@@ -263,20 +248,20 @@ func (c *Client) DeleteObj(reqid uint64, oid string, timeout time.Duration) erro
 // Returns non-nil error if the response cannot be obtained.
 //
 // Don't forget starting the client with Client.Start() before calling Client.call().
-func (c *Client) callTimeout(reqid uint64, method uint8, oid string, data xrpc.Byteser, timeout time.Duration) (resp io.ReadCloser, err error) {
+func (c *Client) callTimeout(reqid uint64, method uint8, oid string, body []byte, timeout time.Duration) (resp xrpc.Byteser, err error) {
 
 	if timeout == 0 {
 		timeout = c.RequestTimeout
 	}
 
-	var ob [16]byte
+	var ob [16]byte // Using byte array to save function stack space.
 	err = xhex.Decode(ob[:16], xstrconv.ToBytes(oid))
 	if err != nil {
 		return
 	}
 
 	var ar *asyncResult
-	if ar, err = c.callAsync(reqid, method, ob, data); err != nil {
+	if ar, err = c.callAsync(reqid, method, ob, body); err != nil {
 		return nil, err
 	}
 
@@ -285,11 +270,21 @@ func (c *Client) callTimeout(reqid uint64, method uint8, oid string, data xrpc.B
 	select {
 	case <-ar.done:
 		resp, err = ar.respBody, ar.err
+		if err != nil {
+			if resp != nil {
+				_ = resp.Close() // In case of passing resp when there is an error.
+			}
+			resp = nil
+		}
+
 		releaseAsyncResult(ar)
 	case <-t.C:
-		// cancel will be captured in write preparation, asyncResult will be released there.
+		// Cancel will be captured in write preparation, asyncResult will be released there.
 		// Or it has been sent, just waiting for the response.
+		//
+		// If write broken, ar may not be put back to the pool.
 		ar.cancel()
+		resp = nil
 		err = xrpc.ErrTimeout
 	}
 
@@ -297,7 +292,7 @@ func (c *Client) callTimeout(reqid uint64, method uint8, oid string, data xrpc.B
 	return
 }
 
-func (c *Client) callAsync(reqid uint64, method uint8, oid [16]byte, data xrpc.Byteser) (ar *asyncResult, err error) {
+func (c *Client) callAsync(reqid uint64, method uint8, oid [16]byte, body []byte) (ar *asyncResult, err error) {
 
 	if reqid == 0 {
 		reqid = uid.MakeReqID()
@@ -308,10 +303,19 @@ func (c *Client) callAsync(reqid uint64, method uint8, oid [16]byte, data xrpc.B
 	}
 
 	ar = acquireAsyncResult()
+
+	// In case of after returning, the data will still in the client write process,
+	// it may sent dirty data. Copy is a safe choice.
+	// TODO better way to avoiding copy.
+	if body != nil {
+		reqData := xrpc.GetNBytes(len(body))
+		_, _ = reqData.Write(body)
+		ar.reqData = reqData
+	}
+
 	ar.reqid = reqid
 	ar.method = method
 	ar.oid = oid
-	ar.reqData = data
 	ar.done = make(chan struct{})
 
 	select {
@@ -338,8 +342,7 @@ func (c *Client) callAsync(reqid uint64, method uint8, oid [16]byte, data xrpc.B
 		case c.requestsChan <- ar:
 			return ar, nil
 		default:
-			// Release ar even if use pool, since ar wasn't exposed
-			// to the caller yet.
+			// RequestsChan is filled, release it since m wasn't exposed to the caller yet.
 			releaseAsyncResult(ar)
 			return nil, xrpc.ErrRequestQueueOverflow
 		}
@@ -376,7 +379,7 @@ func clientHandler(c *Client) {
 			select {
 			case <-c.stopChan:
 				return
-			case <-time.After(time.Second):
+			case <-time.After(300 * time.Millisecond): // After 300ms, try to dial again.
 			}
 			continue
 		}
@@ -447,20 +450,24 @@ func sendHandshake(conn net.Conn) error {
 	return nil
 }
 
-func clientWriter(c *Client, w net.Conn,
-	pendingRequests map[uint64]*asyncResult, pendingRequestsLock *sync.Mutex,
+func clientWriter(c *Client, w net.Conn, pendingRequests map[uint64]*asyncResult, pendingRequestsLock *sync.Mutex,
 	stopChan <-chan struct{}, done chan<- error) {
 
 	var err error
 	defer func() { done <- err }()
 
-	t := time.NewTimer(c.FlushDelay)
-	var flushChan <-chan time.Time
 	enc := newEncoder(w, c.SendBufferSize)
-	var msgID uint64 = 1
 	msg := new(message)
 	header := new(reqHeader)
+
+	t := time.NewTimer(c.FlushDelay)
+	var flushChan <-chan time.Time
+
+	var msgID uint64 = 1
+
 	for {
+		msgID++
+
 		var ar *asyncResult
 
 		select {
@@ -488,16 +495,28 @@ func clientWriter(c *Client, w net.Conn,
 		}
 
 		if ar.isCanceled() {
+			if ar.reqData != nil {
+				_ = ar.reqData.Close()
+			}
+
 			if ar.done != nil {
 				ar.err = xrpc.ErrCanceled
 				close(ar.done)
 			} else {
 				releaseAsyncResult(ar)
 			}
+
 			continue
 		}
 
-		msgID++
+		if ar.done == nil {
+			if ar.reqData != nil {
+				_ = ar.reqData.Close()
+			}
+			releaseAsyncResult(ar)
+			continue
+		}
+
 		pendingRequestsLock.Lock()
 		n := len(pendingRequests)
 		pendingRequests[msgID] = ar
@@ -507,10 +526,6 @@ func clientWriter(c *Client, w net.Conn,
 			xlog.ErrorIDf(ar.reqid, "server: %s didn't return %d responses yet: closing connection", c.Addr, n)
 			err = xrpc.ErrConnection
 			return
-		}
-
-		if ar.done == nil {
-			releaseAsyncResult(ar)
 		}
 
 		header.method = ar.method
@@ -529,39 +544,9 @@ func clientWriter(c *Client, w net.Conn,
 			xlog.ErrorIDf(ar.reqid, "failed to send request to: %s: %s", c.Addr, err)
 			return
 		}
+		msg.header = nil
+		msg.body = nil
 	}
-}
-
-func sendHeader(w net.Conn, buf []byte, deadline time.Time) error {
-	if err := w.SetWriteDeadline(deadline); err != nil {
-		return err
-	}
-	if _, err := w.Write(buf); err != nil {
-		return err
-	}
-	return nil
-}
-
-func sendBytes(w net.Conn, buf []byte, perWrite int, deadline time.Time) (err error) {
-
-	sent := 0
-	for sent < len(buf) {
-		if sent+perWrite > len(buf) {
-			perWrite = len(buf) - sent
-		}
-		deadline = time.Now().Add(writeDuration)
-		if err = w.SetWriteDeadline(deadline); err != nil {
-			return
-		}
-		if _, err = w.Write(buf[sent : sent+perWrite]); err != nil {
-			return
-		}
-		sent += perWrite
-	}
-	if sent != len(buf) {
-		return errors.New("unexpected sent size")
-	}
-	return nil
 }
 
 func clientReader(c *Client, r net.Conn, pendingRequests map[uint64]*asyncResult, pendingRequestsLock *sync.Mutex, done chan<- error) {
@@ -580,21 +565,25 @@ func clientReader(c *Client, r net.Conn, pendingRequests map[uint64]*asyncResult
 		hash = nil
 	}
 	dec := newDecoder(r, c.RecvBufferSize, hash)
-	resp := &message{
+	msg := &message{
 		header: new(respHeader),
 	}
 	for {
-		err := dec.decode(resp)
+		err := dec.decode(msg)
 		if err != nil {
 			if err == xrpc.ErrTimeout {
+				msg.body = nil
 				continue // Keeping trying to read request header.
 			}
 			xlog.Errorf("failed to read request from %s: %s", r.RemoteAddr().String(), err)
+			if msg.body != nil {
+				_ = msg.body.Close()
+			}
 			return
 		}
 
-		h := resp.header.(*respHeader)
-
+		body := msg.body
+		h := msg.header.(*respHeader)
 		msgID := h.msgID
 		errno := h.errno
 		n := h.bodySize
@@ -609,34 +598,56 @@ func clientReader(c *Client, r net.Conn, pendingRequests map[uint64]*asyncResult
 		if !ok {
 			xlog.Errorf("unexpected msgID: %d obtained from: %s", msgID, c.Addr)
 			err = xrpc.ErrInternalServer
+			if msg.body != nil {
+				_ = msg.body.Close()
+			}
 			return
 		}
 
+		// Ignore response if any error. And the response must be nil.
 		digest := binary.LittleEndian.Uint32(ar.oid[8:12])
 		if !c.encrypted && n != 0 {
 			actDigest := hash.Sum32()
 			if actDigest != digest {
 				xlog.ErrorID(ar.reqid, xerrors.WithMessage(xrpc.ErrChecksumMismatch, fmt.Sprintf("response exp: %d, but: %d", digest, actDigest)).Error())
 				ar.err = xrpc.ErrChecksumMismatch
+				if body != nil {
+					_ = body.Close()
+				}
+				ar.respBody = nil
+				msg.body = nil
 				close(ar.done)
-				return
+				hash.Reset()
+				continue
 			}
+			hash.Reset()
 		}
-		hash.Reset()
 
 		if errno != 0 {
-			ar.err = xrpc.Errno(errno)
-			close(ar.done)
-			continue // Ignore response if any error. And the response must be nil.
-		}
-
-		if n == 0 {
+			ar.err = xrpc.Errno(errno).ToErr()
+			if body != nil {
+				_ = body.Close()
+			}
+			ar.respBody = nil
+			msg.body = nil
 			close(ar.done)
 			continue
 		}
 
-		ar.respBody = resp.body
+		if n == 0 {
+			if body != nil {
+				_ = body.Close()
+			}
+
+			ar.respBody = nil
+			msg.body = nil
+			close(ar.done)
+			continue
+		}
+
+		ar.respBody = body
 		close(ar.done)
+		msg.body = nil
 	}
 }
 

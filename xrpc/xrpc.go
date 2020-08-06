@@ -26,7 +26,7 @@ type Objecter interface {
 	// Stop Objecter, release resource.
 	Stop() error
 	// Put puts object to the ZBuf node which Objecter connected.
-	PutObj(reqid uint64, oid string, objData Byteser, timeout time.Duration) error
+	PutObj(reqid uint64, oid string, objData []byte, timeout time.Duration) error
 	// Get gets object from the ZBuf node which Objecter connected.
 	GetObj(reqid uint64, oid string, timeout time.Duration) (obj io.ReadCloser, err error)
 	// Delete deletes object in the ZBuf node which Objecter connected.

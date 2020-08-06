@@ -44,8 +44,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zaibyte/pkg/xrpc"
-
 	"github.com/zaibyte/pkg/uid"
 	"github.com/zaibyte/pkg/xdigest"
 )
@@ -66,19 +64,16 @@ func BenchmarkClient_Put(b *testing.B) {
 	c.Start()
 	defer c.Stop()
 
-	req := make([]byte, 16)
-	rand.Read(req)
-	digest := xdigest.Sum32(req)
+	objData := make([]byte, 16)
+	rand.Read(objData)
+	digest := xdigest.Sum32(objData)
 	_, oid := uid.MakeOID(1, 1, digest, 16, uid.NormalObj)
-	rr := xrpc.GetBytes()
-	rr.Write(req)
-	defer rr.Close()
 
 	b.SetParallelism(256)
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for i := 0; pb.Next(); i++ {
-			err := c.PutObj(uid.MakeReqID(), oid, rr, 0)
+			err := c.PutObj(uid.MakeReqID(), oid, objData, 0)
 			if err != nil {
 				b.Fatalf("Unexpected error: %s", err)
 			}

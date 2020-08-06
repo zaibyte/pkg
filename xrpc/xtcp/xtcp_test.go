@@ -40,11 +40,23 @@
 package xtcp
 
 import (
+	"bytes"
+	"crypto/tls"
 	"fmt"
 	"math/rand"
-	"net"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/templexxx/tsc"
+
+	"github.com/templexxx/xhex"
+	"github.com/zaibyte/pkg/xstrconv"
+
+	"github.com/zaibyte/pkg/uid"
+	"github.com/zaibyte/pkg/xdigest"
 
 	_ "github.com/zaibyte/pkg/xlog/xlogtest"
 	"github.com/zaibyte/pkg/xrpc"
@@ -64,421 +76,465 @@ func testDeleteFunc(reqid uint64, oid [16]byte) error {
 }
 
 func getRandomAddr() string {
+	rand.Seed(tsc.UnixNano())
 	return fmt.Sprintf("127.0.0.1:%d", rand.Intn(20000)+10000)
 }
 
-func TestBadClient(t *testing.T) {
+func TestRequestTimeout(t *testing.T) {
+
 	addr := getRandomAddr()
 
-	s := NewServer(addr, nil, testPutFunc, testGetFunc, testDeleteFunc)
-	s.Start()
+	s := NewServer(addr, nil, func(reqid uint64, oid [16]byte, objData xrpc.Byteser) error {
+		time.Sleep(10 * time.Millisecond)
+		return nil
+	}, testGetFunc, testDeleteFunc)
+	if err := s.Start(); err != nil {
+		t.Fatalf("cannot start server: %s", err)
+	}
 	defer s.Stop()
 
+	c := NewClient(addr, nil)
+	c.Start()
+	defer c.Stop()
+
+	objData := make([]byte, 16)
+	rand.Read(objData)
+	digest := xdigest.Sum32(objData)
+	_, oid := uid.MakeOID(1, 1, digest, 16, uid.NormalObj)
+
 	for i := 0; i < 10; i++ {
-		sendBadInput(t, addr, 0)
-		sendBadInput(t, addr, 1)
+		err := c.PutObj(0, oid, objData, time.Millisecond)
+		if err == nil {
+			t.Fatalf("Timeout error must be returned")
+		}
+		if err != xrpc.ErrTimeout {
+			t.Fatalf("Unexpected error returned: [%s]", err)
+		}
 	}
-
-	time.Sleep(10 * time.Millisecond)
 }
 
-func sendBadInput(t *testing.T, addr string, isCompressed byte) {
-	conn, err := net.Dial("tcp", addr)
+func TestServerStuck(t *testing.T) {
+
+	addr := getRandomAddr()
+
+	s := NewServer(addr, nil, func(reqid uint64, oid [16]byte, objData xrpc.Byteser) error {
+		time.Sleep(time.Second)
+		return nil
+	}, testGetFunc, testDeleteFunc)
+	if err := s.Start(); err != nil {
+		t.Fatalf("cannot start server: %s", err)
+	}
+	defer s.Stop()
+
+	c := NewClient(addr, nil)
+	c.PendingRequests = 100
+	c.Start()
+	defer c.Stop()
+
+	objData := make([]byte, 16)
+	rand.Read(objData)
+	digest := xdigest.Sum32(objData)
+	_, oid := uid.MakeOID(1, 1, digest, 16, uid.NormalObj)
+	var ob [16]byte
+	err := xhex.Decode(ob[:16], xstrconv.ToBytes(oid))
 	if err != nil {
-		t.Fatalf("cannot establish connection to server on addr=[%s]: [%s]", addr, err)
+		t.Fatal(err)
 	}
 
-	data := make([]byte, 1024)
-	rand.Read(data)
-	data[0] = handshake[0]
-	conn.Write(data)
-	conn.Close()
+	res := make([]*asyncResult, 1500*c.Conns)
+	for j := 0; j < 15*c.Conns; j++ {
+		for i := 0; i < 100; i++ {
+			res[i+100*j], err = c.callAsync(0, objPutMethod, ob, objData)
+			if err != nil {
+				t.Fatalf("%d. Unexpected error in CallAsync: [%s]", j*100+i, err)
+			}
+		}
+		// This should prevent from overflow errors.
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	stuckErrors := 0
+
+	timer := acquireTimer(300 * time.Millisecond)
+	defer releaseTimer(timer)
+
+	for i := range res {
+		r := res[i]
+		select {
+		case <-r.done:
+		case <-timer.C:
+			goto exit
+		}
+
+		if r.err == xrpc.ErrConnection {
+			stuckErrors++
+		} else if r.err != xrpc.ErrRequestQueueOverflow {
+			t.Fatal("unexpected error")
+		}
+	}
+exit:
+
+	if stuckErrors == 0 {
+		t.Fatalf("Stuck server detector doesn't work?")
+	}
 }
 
-//func TestBadServer(t *testing.T) {
-//	addr := getRandomAddr()
+func TestClient_GetObj(t *testing.T) {
+	addr := getRandomAddr()
+
+	stor := make(map[[16]byte][]byte)
+
+	s := NewServer(addr, nil, func(reqid uint64, oid [16]byte, objData xrpc.Byteser) error {
+		o := make([]byte, len(objData.Bytes()))
+		copy(o, objData.Bytes())
+		stor[oid] = o
+		return nil
+	}, func(reqid uint64, oid [16]byte) (objData xrpc.Byteser, err error) {
+		_, _, _, _, size, _ := uid.ParseOIDBytes(oid[:])
+		objData = xrpc.GetNBytes(int(size))
+		o := stor[oid]
+		objData.Write(o)
+		return
+	}, testDeleteFunc)
+	if err := s.Start(); err != nil {
+		t.Fatalf("cannot start server: %s", err)
+	}
+	defer s.Stop()
+
+	c := NewClient(addr, nil)
+	c.Start()
+	defer c.Stop()
+
+	req := make([]byte, xrpc.MaxBytesSizeInPool*2)
+	rand.Read(req)
+
+	for i := 0; i < 7; i++ {
+
+		size := (1 << i) * 1024
+		objData := req[:size]
+		digest := xdigest.Sum32(objData)
+		_, oid := uid.MakeOID(1, 1, digest, uint32(size), uid.NormalObj)
+
+		err := c.PutObj(0, oid, objData, 0)
+		if err != nil {
+			t.Fatal(err, size)
+		}
+	}
+
+	for oid, objBytes := range stor {
+		b := make([]byte, 32)
+		xhex.Encode(b, oid[:])
+		bf, err := c.GetObj(0, xstrconv.ToString(b), 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _, _, _, size, _ := uid.ParseOIDBytes(oid[:])
+		act := make([]byte, size)
+		n, err := bf.Read(act)
+		if err != nil {
+			bf.Close()
+			t.Fatal(err, size, n)
+		}
+		if !bytes.Equal(act, objBytes) {
+			bf.Close()
+			t.Fatal("obj data mismatch")
+		}
+		bf.Close()
+	}
+}
+
+func TestClient_DeleteObj(t *testing.T) {
+	addr := getRandomAddr()
+
+	stor := make(map[[16]byte][]byte)
+
+	s := NewServer(addr, nil,
+		func(reqid uint64, oid [16]byte, objData xrpc.Byteser) error {
+			o := make([]byte, len(objData.Bytes()))
+			copy(o, objData.Bytes())
+			stor[oid] = o
+			return nil
+		},
+		func(reqid uint64, oid [16]byte) (objData xrpc.Byteser, err error) {
+
+			o, ok := stor[oid]
+			if !ok {
+				return nil, xrpc.ErrNotFound
+			}
+			_, _, _, _, size, _ := uid.ParseOIDBytes(oid[:])
+			objData = xrpc.GetNBytes(int(size))
+			objData.Write(o)
+			return
+		},
+		func(reqid uint64, oid [16]byte) error {
+			_, ok := stor[oid]
+			if !ok {
+				return xrpc.ErrNotFound
+			}
+			delete(stor, oid)
+			return nil
+		})
+	if err := s.Start(); err != nil {
+		t.Fatalf("cannot start server: %s", err)
+	}
+	defer s.Stop()
+
+	c := NewClient(addr, nil)
+	c.Start()
+	defer c.Stop()
+
+	req := make([]byte, xrpc.MaxBytesSizeInPool*2)
+	rand.Read(req)
+
+	for i := 0; i < 7; i++ {
+
+		size := (1 << i) * 1024
+		objData := req[:size]
+		digest := xdigest.Sum32(objData)
+		_, oid := uid.MakeOID(1, 1, digest, uint32(size), uid.NormalObj)
+
+		err := c.PutObj(0, oid, objData, 0)
+		if err != nil {
+			t.Fatal(err, size)
+		}
+	}
+
+	deleted := make([][16]byte, 3)
+	cnt := 0
+	for oid := range stor {
+		if cnt >= 3 {
+			break
+		}
+		b := make([]byte, 32)
+		xhex.Encode(b, oid[:])
+		err := c.DeleteObj(0, xstrconv.ToString(b), 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var do [16]byte
+		copy(do[:], oid[:])
+		deleted[cnt] = do
+		cnt++
+	}
+
+	for oid, objBytes := range stor {
+		b := make([]byte, 32)
+		xhex.Encode(b, oid[:])
+		bf, err := c.GetObj(0, xstrconv.ToString(b), 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _, _, _, size, _ := uid.ParseOIDBytes(oid[:])
+		act := make([]byte, size)
+		n, err := bf.Read(act)
+		if err != nil {
+			bf.Close()
+			t.Fatal(err, size, n)
+		}
+		if !bytes.Equal(act, objBytes) {
+			bf.Close()
+			t.Fatal("obj data mismatch")
+		}
+		bf.Close()
+	}
+
+	for _, oid := range deleted {
+		b := make([]byte, 32)
+		xhex.Encode(b, oid[:])
+		bf, err := c.GetObj(0, xstrconv.ToString(b), 0)
+
+		assert.Nil(t, bf)
+		assert.Equal(t, xrpc.ErrNotFound, err)
+	}
+}
+
+func TestClient_GetObj_Concurrency(t *testing.T) {
+	addr := getRandomAddr()
+
+	stor := new(sync.Map)
+
+	s := NewServer(addr, nil,
+		func(reqid uint64, oid [16]byte, objData xrpc.Byteser) error {
+			_, _, _, _, size, _ := uid.ParseOIDBytes(oid[:])
+			o := make([]byte, size)
+			n, err := objData.Read(o)
+			if err != nil {
+				return xrpc.ErrInternalServer
+			}
+			if n != int(size) {
+				return xrpc.ErrInternalServer
+			}
+			stor.Store(oid, o)
+			return nil
+		}, func(reqid uint64, oid [16]byte) (objData xrpc.Byteser, err error) {
+			_, _, _, _, size, _ := uid.ParseOIDBytes(oid[:])
+			objData = xrpc.GetNBytes(int(size))
+			v, ok := stor.Load(oid)
+			if !ok {
+				return nil, xrpc.ErrNotFound
+			}
+			o := v.([]byte)
+			objData.Write(o)
+			return
+		}, testDeleteFunc)
+	if err := s.Start(); err != nil {
+		t.Fatalf("cannot start server: %s", err)
+	}
+	defer s.Stop()
+
+	c := NewClient(addr, nil)
+	c.Start()
+	defer c.Stop()
+
+	req := make([]byte, 1024*1024)
+	rand.Read(req)
+
+	oids := make([]string, 18)
+
+	for i := 0; i < 18; i++ {
+
+		size := (1 << i) * 2
+		objData := req[:size]
+		digest := xdigest.Sum32(objData)
+		_, oid := uid.MakeOID(1, 1, digest, uint32(size), uid.NormalObj)
+		err := c.PutObj(0, oid, objData, 0)
+		if err != nil {
+			t.Fatal(err, size)
+		}
+		oids[i] = oid
+	}
+
+	var wg sync.WaitGroup
+	for _, oid := range oids {
+		wg.Add(1)
+		go func(oid string) {
+			defer wg.Done()
+			bf, err := c.GetObj(0, oid, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer bf.Close()
+
+			_, _, _, _, size, _, _ := uid.ParseOID(oid)
+			act := make([]byte, size)
+			bf.Read(act)
+			var ob [16]byte // Using byte array to save function stack space.
+			xhex.Decode(ob[:16], xstrconv.ToBytes(oid))
+			v, ok := stor.Load(ob)
+			if !ok {
+				t.Fatal("not found")
+			}
+			if !bytes.Equal(act, v.([]byte)) {
+				t.Fatal("get obj data mismatch")
+			}
+
+		}(oid)
+	}
+
+	wg.Wait()
+}
+
+func TestClient_GetObj_ConcurrencyTLS(t *testing.T) {
+	addr := getRandomAddr()
+
+	certFile := "./ssl-cert-snakeoil.pem"
+	keyFile := "./ssl-cert-snakeoil.key"
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		t.Fatalf("cannot load TLS certificates: [%s]", err)
+	}
+	serverCfg := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+	}
+	clientCfg := &tls.Config{
+		InsecureSkipVerify: true,
+	}
+
+	stor := new(sync.Map)
+
+	s := NewServer(addr, serverCfg,
+		func(reqid uint64, oid [16]byte, objData xrpc.Byteser) error {
+			_, _, _, _, size, _ := uid.ParseOIDBytes(oid[:])
+			o := make([]byte, size)
+			n, err := objData.Read(o)
+			if err != nil {
+				return xrpc.ErrInternalServer
+			}
+			if n != int(size) {
+				return xrpc.ErrInternalServer
+			}
+			stor.Store(oid, o)
+			return nil
+		}, func(reqid uint64, oid [16]byte) (objData xrpc.Byteser, err error) {
+			_, _, _, _, size, _ := uid.ParseOIDBytes(oid[:])
+			objData = xrpc.GetNBytes(int(size))
+			v, ok := stor.Load(oid)
+			if !ok {
+				return nil, xrpc.ErrNotFound
+			}
+			o := v.([]byte)
+			objData.Write(o)
+			return
+		}, testDeleteFunc)
+	if err := s.Start(); err != nil {
+		t.Fatalf("cannot start server: %s", err)
+	}
+	defer s.Stop()
+
+	c := NewClient(addr, clientCfg)
+	c.Start()
+	defer c.Stop()
+
+	req := make([]byte, 1024*1024)
+	rand.Read(req)
+
+	oids := make([]string, 18)
+
+	for i := 0; i < 18; i++ {
+
+		size := (1 << i) * 2
+		objData := req[:size]
+		digest := xdigest.Sum32(objData)
+		_, oid := uid.MakeOID(1, 1, digest, uint32(size), uid.NormalObj)
+		err := c.PutObj(0, oid, objData, 0)
+		if err != nil {
+			t.Fatal(err, size)
+		}
+		oids[i] = oid
+	}
+
+	var wg sync.WaitGroup
+	for _, oid := range oids {
+		wg.Add(1)
+		go func(oid string) {
+			defer wg.Done()
+			bf, err := c.GetObj(0, oid, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer bf.Close()
+
+			_, _, _, _, size, _, _ := uid.ParseOID(oid)
+			act := make([]byte, size)
+			bf.Read(act)
+			var ob [16]byte // Using byte array to save function stack space.
+			xhex.Decode(ob[:16], xstrconv.ToBytes(oid))
+			v, ok := stor.Load(ob)
+			if !ok {
+				t.Fatal("not found")
+			}
+			if !bytes.Equal(act, v.([]byte)) {
+				t.Fatal("get obj data mismatch")
+			}
+
+		}(oid)
+	}
+
+	wg.Wait()
+}
+
 //
-//	ln, err := net.Listen("tcp", addr)
-//	if err != nil {
-//		t.Fatalf("cannot listen on [%s]: [%s]", addr, err)
-//	}
-//
-//	doneCh := make(chan struct{})
-//	go func() {
-//		for {
-//			conn, err := ln.Accept()
-//			if err != nil {
-//				close(doneCh)
-//				return
-//			}
-//
-//			go func() {
-//				buf := make([]byte, 4096)
-//				conn.Read(buf)
-//				conn.Write(randomData(65536))
-//				conn.Close()
-//			}()
-//		}
-//	}()
-//
-//	c := NewTCPClient(addr)
-//	c.Start()
-//	for i := 0; i < 10; i++ {
-//		c.call("foobarbaz")
-//	}
-//	c.Stop()
-//
-//	ln.Close()
-//	<-doneCh
-//}
-//
-//func TestClientDoubleStart(t *testing.T) {
-//	c := NewTCPClient(getRandomAddr())
-//	c.Start()
-//	defer c.Stop()
-//
-//	testPanic(t, func() {
-//		c.Start()
-//	})
-//}
-//
-//func TestServerDoubleStart(t *testing.T) {
-//	s := NewTCPServer(getRandomAddr(), echoHandler)
-//	if err := s.Start(); err != nil {
-//		t.Fatalf("unexpected error when starting server: [%s]", err)
-//	}
-//	defer s.Stop()
-//
-//	testPanic(t, func() {
-//		if err := s.Start(); err != nil {
-//			t.Fatalf("unexpected error when starting server: [%s]", err)
-//		}
-//	})
-//}
-//
-//func TestStopStoppedClient(t *testing.T) {
-//	c := NewTCPClient(getRandomAddr())
-//	testPanic(t, func() {
-//		c.Stop()
-//	})
-//}
-//
-//func TestStopStoppedServer(t *testing.T) {
-//	s := NewTCPServer(getRandomAddr(), echoHandler)
-//	testPanic(t, func() {
-//		s.Stop()
-//	})
-//}
-//
-//func TestServerServe(t *testing.T) {
-//	s := &Server{
-//		Addr:   getRandomAddr(),
-//		Router: echoHandler,
-//	}
-//	go func() {
-//		time.Sleep(time.Millisecond * 100)
-//		s.Stop()
-//	}()
-//	if err := s.Serve(); err != nil {
-//		t.Fatalf("Server.Serve() shouldn't return error. Returned [%s]", err)
-//	}
-//}
-//
-//func TestServerStartStop(t *testing.T) {
-//	s := &Server{
-//		Addr:   getRandomAddr(),
-//		Router: echoHandler,
-//	}
-//	for i := 0; i < 5; i++ {
-//		if err := s.Start(); err != nil {
-//			t.Fatalf("Server.Start() shouldn't return error. Returned [%s]", err)
-//		}
-//		s.Stop()
-//	}
-//}
-//
-//func TestClientStartStop(t *testing.T) {
-//	addr := getRandomAddr()
-//	s := &Server{
-//		Addr:   addr,
-//		Router: echoHandler,
-//	}
-//	if err := s.Start(); err != nil {
-//		t.Fatalf("Server.Start() failed: [%s]", err)
-//	}
-//	defer s.Stop()
-//
-//	c := &Client2{
-//		Addr:  addr,
-//		Conns: 3,
-//	}
-//	for i := 0; i < 5; i++ {
-//		c.Start()
-//		time.Sleep(time.Millisecond * 10)
-//		c.Stop()
-//	}
-//}
-//
-//func TestRequestTimeout(t *testing.T) {
-//	addr := getRandomAddr()
-//	s := &Server{
-//		Addr: addr,
-//		Router: func(request interface{}) interface{} {
-//			time.Sleep(10 * time.Second)
-//			return request
-//		},
-//	}
-//	if err := s.Start(); err != nil {
-//		t.Fatalf("Server.Start() failed: [%s]", err)
-//	}
-//	defer s.Stop()
-//
-//	c := &Client2{
-//		Addr:           addr,
-//		RequestTimeout: time.Millisecond,
-//	}
-//	c.Start()
-//	defer c.Stop()
-//
-//	for i := 0; i < 10; i++ {
-//		resp, err := c.call(123)
-//		if err == nil {
-//			t.Fatalf("Timeout error must be returned")
-//		}
-//		if !err.(*ClientError).Timeout {
-//			t.Fatalf("Unexpected error returned: [%s]", err)
-//		}
-//		if resp != nil {
-//			t.Fatalf("Unexpected response %+v: expected nil", resp)
-//		}
-//	}
-//}
-//
-//func TestCallTimeout(t *testing.T) {
-//	addr := getRandomAddr()
-//	s := &Server{
-//		Addr: addr,
-//		Router: func(request interface{}) interface{} {
-//			time.Sleep(10 * time.Second)
-//			return request
-//		},
-//	}
-//	if err := s.Start(); err != nil {
-//		t.Fatalf("Server.Start() failed: [%s]", err)
-//	}
-//	defer s.Stop()
-//
-//	c := &Client2{
-//		Addr: addr,
-//	}
-//	c.Start()
-//	defer c.Stop()
-//
-//	for i := 0; i < 10; i++ {
-//		resp, err := c.callTimeout(123, time.Millisecond)
-//		if err == nil {
-//			t.Fatalf("Timeout error must be returned")
-//		}
-//		if !err.(*ClientError).Timeout {
-//			t.Fatalf("Unexpected error returned: [%s]", err)
-//		}
-//		if resp != nil {
-//			t.Fatalf("Unexpected response %+v: expected nil", resp)
-//		}
-//	}
-//}
-//
-//func TestNoServer(t *testing.T) {
-//	c := &Client2{
-//		Addr:           getRandomAddr(),
-//		RequestTimeout: 100 * time.Millisecond,
-//	}
-//	c.Start()
-//	defer c.Stop()
-//
-//	resp, err := c.call("foobar")
-//	if err == nil {
-//		t.Fatalf("Timeout error must be returned")
-//	}
-//	if !err.(*ClientError).Timeout {
-//		t.Fatalf("Unexpected error: [%s]", err)
-//	}
-//	if resp != nil {
-//		t.Fatalf("Unepxected response: %+v. Expected nil", resp)
-//	}
-//}
-//
-//func TestServerPanic(t *testing.T) {
-//	addr := getRandomAddr()
-//	s := &Server{
-//		Addr: addr,
-//		Router: func(request interface{}) interface{} {
-//			if request.(string) == "foobar" {
-//				panic("server panic")
-//			}
-//			return request
-//		},
-//	}
-//	if err := s.Start(); err != nil {
-//		t.Fatalf("Server.Start() failed: [%s]", err)
-//	}
-//	defer s.Stop()
-//
-//	c := &Client2{
-//		Addr: addr,
-//	}
-//	c.Start()
-//	defer c.Stop()
-//
-//	for i := 0; i < 3; i++ {
-//		resp, err := c.call("foobar")
-//		if err == nil {
-//			t.Fatalf("Unexpected nil error")
-//		}
-//		if resp != nil {
-//			t.Fatalf("Unepxected response for panicing server: %+v. Expected nil", resp)
-//		}
-//		if !err.(*ClientError).Server {
-//			t.Fatalf("Unexpected error type: %v. Expected server error", err)
-//		}
-//	}
-//
-//	for i := 0; i < 3; i++ {
-//		resp, err := c.call("aaaaa")
-//		if err != nil {
-//			t.Fatalf("Unexpected error: [%s]", err)
-//		}
-//		if resp == nil {
-//			t.Fatalf("Unepxected nil response")
-//		}
-//		if resp.(string) != "aaaaa" {
-//			t.Fatalf("Unexpected response: %v. Expected 'aaaaa'", resp)
-//		}
-//	}
-//}
-//
-//func TestServerStuck(t *testing.T) {
-//	addr := getRandomAddr()
-//	s := &Server{
-//		Addr: addr,
-//		Router: func(request interface{}) interface{} {
-//			time.Sleep(time.Second)
-//			return "aaa"
-//		},
-//	}
-//	if err := s.Start(); err != nil {
-//		t.Fatalf("Server.Start() failed: [%s]", err)
-//	}
-//	defer s.Stop()
-//
-//	c := &Client2{
-//		Addr:            addr,
-//		PendingRequests: 100,
-//	}
-//	c.Start()
-//	defer c.Stop()
-//
-//	res := make([]*AsyncResult2, 1500*c.Conns)
-//	var err error
-//	for j := 0; j < 15*c.Conns; j++ {
-//		for i := 0; i < 100; i++ {
-//			res[i+100*j], err = c.CallAsync("abc")
-//			if err != nil {
-//				t.Fatalf("%d. Unexpected error in CallAsync: [%s]", j*100+i, err)
-//			}
-//		}
-//		// This should prevent from overflow errors.
-//		time.Sleep(20 * time.Millisecond)
-//	}
-//
-//	stuckErrors := 0
-//
-//	timer := acquireTimer(300 * time.Millisecond)
-//	defer releaseTimer(timer)
-//
-//	for i := range res {
-//		r := res[i]
-//		select {
-//		case <-r.Done:
-//		case <-timer.C:
-//			goto exit
-//		}
-//
-//		if r.err == nil {
-//			t.Fatalf("Stuck server returned response? %+v", r.resp)
-//		}
-//		ce := r.err.(*ClientError)
-//		if ce.Connection {
-//			stuckErrors++
-//		} else if !ce.Overflow {
-//			t.Fatalf("Unexpected error returned: [%s]", ce)
-//		}
-//		if r.resp != nil {
-//			t.Fatalf("Unexpected response from stuck server: %+v", r.resp)
-//		}
-//	}
-//exit:
-//
-//	if stuckErrors == 0 {
-//		t.Fatalf("Stuck server detector doesn't work?")
-//	}
-//}
-//
-//func testIntClient(t *testing.T, c *Client2) {
-//	for i := 0; i < 10; i++ {
-//		resp, err := c.call(i)
-//		if err != nil {
-//			t.Fatalf("Unexpected error: [%s]", err)
-//		}
-//		x, ok := resp.(int)
-//		if !ok {
-//			t.Fatalf("Unexpected response type: %T. Expected int", resp)
-//		}
-//		if x != i {
-//			t.Fatalf("Unexpected value returned: %d. Expected %d", x, i)
-//		}
-//	}
-//}
-//
-//type onConnectRwcWrapper struct {
-//	rwc io.ReadWriteCloser
-//	t   *testing.T
-//}
-//
-//func (w *onConnectRwcWrapper) LocalAddr() net.Addr {
-//	panic("implement me")
-//}
-//
-//func (w *onConnectRwcWrapper) RemoteAddr() net.Addr {
-//	panic("implement me")
-//}
-//
-//func (w *onConnectRwcWrapper) SetDeadline(t time.Time) error {
-//	panic("implement me")
-//}
-//
-//func (w *onConnectRwcWrapper) SetReadDeadline(t time.Time) error {
-//	panic("implement me")
-//}
-//
-//func (w *onConnectRwcWrapper) SetWriteDeadline(t time.Time) error {
-//	panic("implement me")
-//}
-//
-//func (w *onConnectRwcWrapper) Read(p []byte) (int, error) {
-//	n, err := w.rwc.Read(p)
-//	sillyDecrypt(p)
-//	return n, err
-//}
-//
-//func (w *onConnectRwcWrapper) Write(p []byte) (int, error) {
-//	sillyEncrypt(p)
-//	return w.rwc.Write(p)
-//}
-//
-//func (w *onConnectRwcWrapper) Close() error {
-//	return w.rwc.Close()
-//}
+
 //
 //func sillyEncrypt(p []byte) {
 //	for i := 0; i < len(p); i++ {
@@ -725,56 +781,7 @@ func sendBadInput(t *testing.T, addr string, isCompressed byte) {
 //	}
 //}
 //
-//func TestClientPendingRequestsCount(t *testing.T) {
-//	addr := getRandomAddr()
-//	respCh := make(chan struct{})
-//	reqCh := make(chan struct{}, 1)
-//	s := NewTCPServer(addr, func(request interface{}) interface{} {
-//		reqCh <- struct{}{}
-//		<-respCh
-//		return request
-//	})
-//	if err := s.Start(); err != nil {
-//		t.Fatalf("Server.Start() failed: [%s]", err)
-//	}
-//	defer s.Stop()
-//
-//	c := NewTCPClient(addr)
-//	c.Start()
-//	defer c.Stop()
-//
-//	if c.PendingRequestsCount() != 0 {
-//		t.Fatalf("unexpected number of pending requests: %d. Expected 0", c.PendingRequestsCount())
-//	}
-//	var resps []*AsyncResult2
-//	for i := 0; i < 10; i++ {
-//		resp, err := c.CallAsync(nil)
-//		if err != nil {
-//			t.Fatalf("Unexpected error: [%s]", err)
-//		}
-//		select {
-//		case <-reqCh:
-//		case <-time.After(time.Second):
-//			t.Fatalf("it looks like server is stuck")
-//		}
-//		if c.PendingRequestsCount() != i+1 {
-//			t.Fatalf("unexpected number of pending request: %d. Expected %d", c.PendingRequestsCount(), i+1)
-//		}
-//		resps = append(resps, resp)
-//	}
-//
-//	close(respCh)
-//	for _, resp := range resps {
-//		select {
-//		case <-resp.Done:
-//		case <-time.After(time.Second):
-//			t.Fatalf("it looks like rpc is broken")
-//		}
-//	}
-//	if c.PendingRequestsCount() != 0 {
-//		t.Fatalf("unexpected number of pending requests: %d. Expected 0", c.PendingRequestsCount())
-//	}
-//}
+
 //
 //func TestNilHandler(t *testing.T) {
 //	addr := getRandomAddr()

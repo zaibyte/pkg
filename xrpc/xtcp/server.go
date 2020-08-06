@@ -349,6 +349,9 @@ func serverReader(s *Server, r net.Conn, responsesChan chan<- *serverMessage,
 			return
 		}
 
+		body := req.body
+		req.body = nil
+
 		h := req.header.(*reqHeader)
 		m := serverMessagePool.Get().(*serverMessage)
 		m.method = h.method
@@ -364,15 +367,16 @@ func serverReader(s *Server, r net.Conn, responsesChan chan<- *serverMessage,
 			if actDigest != digest {
 				xlog.ErrorID(m.reqid, xerrors.WithMessage(xrpc.ErrChecksumMismatch, fmt.Sprintf("request exp: %d, but: %d", digest, actDigest)).Error())
 				m.err = xrpc.ErrChecksumMismatch
-				if req.body != nil {
-					_ = req.body.Close()
+				if body != nil {
+					_ = body.Close()
 				}
+				m.reqbody = nil
 			}
+			hash.Reset()
 		}
 		if m.err == nil {
-			m.reqbody = req.body
+			m.reqbody = body
 		}
-		hash.Reset()
 
 		select {
 		case workersCh <- struct{}{}:
@@ -508,8 +512,6 @@ func serverWriter(s *Server, w net.Conn, responsesChan <-chan *serverMessage, st
 			return
 		}
 
-		if resp != nil {
-			_ = resp.Close()
-		}
+		msg.body = nil
 	}
 }

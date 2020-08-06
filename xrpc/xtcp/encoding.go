@@ -16,10 +16,11 @@ package xtcp
 
 import (
 	"bufio"
-	"hash"
 	"io"
 	"net"
 	"time"
+
+	"github.com/zaibyte/pkg/xdigest"
 
 	"github.com/zaibyte/pkg/xrpc"
 )
@@ -38,10 +39,10 @@ func (r *timeoutConnReader) Read(b []byte) (n int, err error) {
 
 type decoder struct {
 	br   *bufio.Reader
-	hash hash.Hash32
+	hash *xdigest.Digest
 }
 
-func newDecoder(conn net.Conn, bufsize int, hash hash.Hash32) *decoder {
+func newDecoder(conn net.Conn, bufsize int, hash *xdigest.Digest) *decoder {
 	r := &timeoutConnReader{r: conn}
 	return &decoder{br: bufio.NewReaderSize(r, bufsize), hash: hash}
 }
@@ -75,22 +76,20 @@ func (d *decoder) decode(msg *message) error {
 
 	n := msg.header.getBodySize()
 	if n == 0 {
+		msg.body = nil
 		return nil
 	}
 
-	if n > xrpc.MaxBytesSizeInPool {
-		msg.body = &xrpc.BytesBuffer{
-			S: make([]byte, n),
-		}
-	} else {
-		msg.body = xrpc.GetBytes()
-	}
+	msg.body = xrpc.GetNBytes(int(n))
 
 	buf := msg.body.Bytes()[:n]
-	_, err = readAtLeast(d.br, buf, len(buf), d.hash)
+	_, err = readAtLeast(d.br, buf, int(n), d.hash)
 	if err != nil {
+		_ = msg.body.Close()
+		msg.body = nil
 		return err
 	}
+
 	msg.body.Set(buf)
 	return nil
 }
@@ -103,18 +102,19 @@ func (d *decoder) decode(msg *message) error {
 // If min is greater than the length of buf, ReadAtLeast returns ErrShortBuffer.
 // On return, n >= min if and only if err == nil.
 // If r returns an error having read at least min bytes, the error is dropped.
-func readAtLeast(r io.Reader, buf []byte, min int, hash hash.Hash32) (n int, err error) {
+func readAtLeast(r io.Reader, buf []byte, min int, hash *xdigest.Digest) (n int, err error) {
 	if len(buf) < min {
 		return 0, io.ErrShortBuffer
 	}
 	for n < min && err == nil {
 		var nn int
-		nn, err = r.Read(buf[n:])
+		nn, err = r.Read(buf[n:min])
 		if err == nil && hash != nil {
-			hash.Write(buf[n : n+nn])
+			_, _ = hash.Write(buf[n : n+nn])
 		}
 		n += nn
 	}
+
 	if n >= min {
 		err = nil
 	} else if n > 0 && err == io.EOF {
@@ -162,6 +162,8 @@ func (e *encoder) encode(msg *message) error {
 	if n == 0 {
 		return nil
 	}
+
+	defer msg.body.Close()
 
 	_, err = e.bw.Write(msg.body.Bytes())
 	return err

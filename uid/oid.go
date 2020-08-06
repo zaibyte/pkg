@@ -103,6 +103,17 @@ func ParseOID(oid string) (boxID, groupID, ts, digest, size uint32, otype uint8,
 		return
 	}
 
+	boxID, groupID, ts, digest, size, otype = ParseOIDBytes(b)
+
+	oidPPool.Put(p)
+
+	return
+}
+
+// ParseOIDBytes parses oid in bytes.
+// Assume there are enough space in oid bytes.
+func ParseOIDBytes(oid []byte) (boxID, groupID, ts, digest, size uint32, otype uint8) {
+	b := oid
 	bg := binary.LittleEndian.Uint32(b[:4])
 	boxID = bg >> 22
 	groupID = bg & groupIDMask
@@ -114,7 +125,5 @@ func ParseOID(oid string) (boxID, groupID, ts, digest, size uint32, otype uint8,
 	so := binary.LittleEndian.Uint32(b[12:16])
 	size = so >> 8
 	otype = uint8(so)
-	oidPPool.Put(p)
-
 	return
 }

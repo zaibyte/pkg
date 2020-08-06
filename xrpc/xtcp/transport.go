@@ -116,7 +116,8 @@ func getConnection(target string, tlsConfig *tls.Config) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = conn.(*net.TCPConn).SetLinger(0); err != nil {
+
+	if err = setTCPConn(conn.(*net.TCPConn)); err != nil {
 		return nil, err
 	}
 

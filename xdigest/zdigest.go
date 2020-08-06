@@ -32,30 +32,30 @@ import (
 	"github.com/zaibyte/pkg/xstrconv"
 )
 
-type digest struct {
+type Digest struct {
 	xxh *xxhash.Digest
 }
 
 // New creates a xdigest.
-func New() *digest {
-	return &digest{xxhash.New()}
+func New() *Digest {
+	return &Digest{xxhash.New()}
 }
 
 // Write (via the embedded io.Writer interface) adds more data to the running hash.
 // It never returns an error.
-func (d *digest) Write(b []byte) (n int, err error) {
+func (d *Digest) Write(b []byte) (n int, err error) {
 	return d.xxh.Write(b)
 }
 
 // WriteString (via the embedded io.Writer interface) adds more data to the running hash.
 // It never returns an error.
-func (d *digest) WriteString(s string) (n int, err error) {
+func (d *Digest) WriteString(s string) (n int, err error) {
 	return d.Write(xstrconv.ToBytes(s))
 }
 
 // Sum appends the current hash to b and returns the resulting slice.
 // It does not change the underlying hash state.
-func (d *digest) Sum(b []byte) []byte {
+func (d *Digest) Sum(b []byte) []byte {
 	s := d.Sum32()
 	return append(
 		b,
@@ -67,17 +67,17 @@ func (d *digest) Sum(b []byte) []byte {
 }
 
 // Sum32 returns the current hash.
-func (d *digest) Sum32() uint32 {
+func (d *Digest) Sum32() uint32 {
 	return uint32(d.xxh.Sum64())
 }
 
 // Reset resets the Hash to its initial state.
-func (d *digest) Reset() {
+func (d *Digest) Reset() {
 	d.xxh.Reset()
 }
 
 // Size returns the number of bytes Sum will return.
-func (d *digest) Size() int {
+func (d *Digest) Size() int {
 	return 4
 }
 
@@ -85,7 +85,7 @@ func (d *digest) Size() int {
 // The Write method must be able to accept any amount
 // of data, but it may operate more efficiently if all writes
 // are a multiple of the block size.
-func (d *digest) BlockSize() int {
+func (d *Digest) BlockSize() int {
 	return 32
 }
 

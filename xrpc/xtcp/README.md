@@ -22,6 +22,10 @@ Based on [goproc](https://github.com/valyala/gorpc) with these modifications:
 
 9. Client/Server reader will wait for a certain time to get header, if timeout it'll retry, avoiding hang.
 
+10. Add needed comments to explain the logic.
+
+11. Remove statistics.
+
 ## Performance Tuning
 
 The origin has tried its best to make things non-blocking.
