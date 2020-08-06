@@ -368,6 +368,71 @@ func TestClient_GetObj_Concurrency(t *testing.T) {
 	wg.Wait()
 }
 
+func TestClient_GetObj_Error_Concurrency(t *testing.T) {
+	addr := getRandomAddr()
+
+	stor := new(sync.Map)
+
+	s := NewServer(addr, nil,
+		func(reqid uint64, oid [16]byte, objData xrpc.Byteser) error {
+			_, _, _, _, size, _ := uid.ParseOIDBytes(oid[:])
+			o := make([]byte, size)
+			n, err := objData.Read(o)
+			if err != nil {
+				return xrpc.ErrInternalServer
+			}
+			if n != int(size) {
+				return xrpc.ErrInternalServer
+			}
+			stor.Store(oid, o)
+			return nil
+		}, func(reqid uint64, oid [16]byte) (objData xrpc.Byteser, err error) {
+			err = xrpc.ErrNotFound
+			return
+		}, testDeleteFunc)
+	if err := s.Start(); err != nil {
+		t.Fatalf("cannot start server: %s", err)
+	}
+	defer s.Stop()
+
+	c := NewClient(addr, nil)
+	c.Start()
+	defer c.Stop()
+
+	req := make([]byte, 1024*1024)
+	rand.Read(req)
+
+	oids := make([]string, 18)
+
+	for i := 0; i < 18; i++ {
+
+		size := (1 << i) * 2
+		objData := req[:size]
+		digest := xdigest.Sum32(objData)
+		_, oid := uid.MakeOID(1, 1, digest, uint32(size), uid.NormalObj)
+		err := c.PutObj(0, oid, objData, 0)
+		if err != nil {
+			t.Fatal(err, size)
+		}
+		oids[i] = oid
+	}
+
+	var wg sync.WaitGroup
+	for _, oid := range oids {
+		wg.Add(1)
+		go func(oid string) {
+			defer wg.Done()
+			bf, err := c.GetObj(0, oid, 0)
+			if err != xrpc.ErrNotFound {
+				t.Fatal("error should be not found")
+			}
+			assert.Nil(t, bf)
+		}(oid)
+	}
+
+	wg.Wait()
+}
+
 func TestClient_GetObj_ConcurrencyTLS(t *testing.T) {
 	addr := getRandomAddr()
 
