@@ -62,7 +62,6 @@ import (
 	"github.com/zaibyte/pkg/xrpc"
 )
 
-// TODO create a map to keep put obj
 func testPutFunc(reqid uint64, oid [16]byte, objData xrpc.Byteser) error {
 	return nil
 }

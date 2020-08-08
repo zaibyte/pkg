@@ -18,13 +18,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"sync"
 	"testing"
 
 	"github.com/zaibyte/pkg/version"
 	"github.com/zaibyte/pkg/xlog"
-	"github.com/zaibyte/pkg/xlog/xlogtest"
+	_ "github.com/zaibyte/pkg/xlog/xlogtest"
 )
 
 var (
@@ -34,9 +33,7 @@ var (
 	testClient *Client
 )
 
-func makeTestServer() (err error) {
-
-	xlogtest.New()
+func init() {
 
 	srv := NewServer(&ServerConfig{
 		Encrypted:         false,
@@ -50,23 +47,6 @@ func makeTestServer() (err error) {
 
 	testClient, _ = NewDefaultClient()
 
-	return nil
-}
-
-func cleanup() {
-	testServer.Close()
-	xlogtest.Close()
-}
-
-func TestMain(m *testing.M) {
-	err := makeTestServer()
-	if err != nil {
-		os.Exit(1)
-	}
-
-	code := m.Run()
-	cleanup()
-	os.Exit(code)
 }
 
 func TestServerDebug(t *testing.T) {
