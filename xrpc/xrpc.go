@@ -17,6 +17,8 @@ package xrpc
 import (
 	"io"
 	"time"
+
+	"github.com/zaibyte/pkg/xbytes"
 )
 
 // Objecter is the object RPC client.
@@ -33,8 +35,8 @@ type Objecter interface {
 	DeleteObj(reqid uint64, oid string, timeout time.Duration) error
 }
 
-type PutFunc func(reqid uint64, oid [16]byte, objData Byteser) error
+type PutFunc func(reqid uint64, oid [16]byte, objData xbytes.Buffer) error
 
-type GetFunc func(reqid uint64, oid [16]byte) (objData Byteser, err error)
+type GetFunc func(reqid uint64, oid [16]byte) (objData xbytes.Buffer, err error)
 
 type DeleteFunc func(reqid uint64, oid [16]byte) error

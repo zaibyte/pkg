@@ -49,18 +49,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/zaibyte/pkg/xerrors"
-
 	"github.com/templexxx/xhex"
-	"github.com/zaibyte/pkg/xstrconv"
-
 	"github.com/zaibyte/pkg/uid"
-
-	"github.com/zaibyte/pkg/xrpc"
-
+	"github.com/zaibyte/pkg/xbytes"
 	"github.com/zaibyte/pkg/xdigest"
-
+	"github.com/zaibyte/pkg/xerrors"
 	"github.com/zaibyte/pkg/xlog"
+	"github.com/zaibyte/pkg/xrpc"
+	"github.com/zaibyte/pkg/xstrconv"
 )
 
 // Client implements xtcp client.
@@ -133,9 +129,9 @@ type asyncResult struct {
 	method  uint8
 	reqid   uint64
 	oid     [16]byte
-	reqData xrpc.Byteser // It only can be released after writing or writing failed.
+	reqData xbytes.Buffer // It only can be released after writing or writing failed.
 
-	respBody xrpc.Byteser
+	respBody xbytes.Buffer
 	// resp is become available after <-done unblocks.
 	done chan struct{}
 	// The error can be read only after <-Done unblocks.
@@ -248,7 +244,7 @@ func (c *Client) DeleteObj(reqid uint64, oid string, timeout time.Duration) erro
 // Returns non-nil error if the response cannot be obtained.
 //
 // Don't forget starting the client with Client.Start() before calling Client.call().
-func (c *Client) callTimeout(reqid uint64, method uint8, oid string, body []byte, timeout time.Duration) (resp xrpc.Byteser, err error) {
+func (c *Client) callTimeout(reqid uint64, method uint8, oid string, body []byte, timeout time.Duration) (resp xbytes.Buffer, err error) {
 
 	if timeout == 0 {
 		timeout = c.RequestTimeout
@@ -308,7 +304,7 @@ func (c *Client) callAsync(reqid uint64, method uint8, oid [16]byte, body []byte
 	// but it's still in the client write process,
 	// it may sent dirty data. Copy is a safe choice.
 	if body != nil {
-		reqData := xrpc.GetNBytes(len(body))
+		reqData := xbytes.GetNBytes(len(body))
 		_, _ = reqData.Write(body)
 		ar.reqData = reqData
 	}

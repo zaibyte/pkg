@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package xrpc
+package xbytes
 
 import (
 	"io"
 	"sync"
 )
 
-type Byteser interface {
+type Buffer interface {
 	io.ReadWriteCloser
 	Bytes() []byte
 	Set(b []byte)
@@ -57,7 +57,7 @@ func (r *BytesBuffer) Close() error {
 }
 
 // Bytes returns a mutable reference to the underlying byte slice.
-// Implements Byteser.
+// Implements Buffer.
 func (r *BytesBuffer) Bytes() []byte {
 	return r.S
 }
@@ -72,7 +72,7 @@ var (
 	_bufferPool = newBufferPool()
 	// GetBytes retrieves a buffer from the buffer pool, creating one if necessary.
 	GetBytes  = _bufferPool.Get
-	GetNBytes = func(n int) Byteser {
+	GetNBytes = func(n int) Buffer {
 		if n <= MaxBytesSizeInPool {
 			return GetBytes()
 		}
@@ -141,7 +141,7 @@ func (r *BytesBufferPool) Close() error {
 }
 
 // Bytes returns a mutable reference to the underlying byte slice.
-// Implements Byteser.
+// Implements Buffer.
 func (r *BytesBufferPool) Bytes() []byte {
 	return r.S
 }

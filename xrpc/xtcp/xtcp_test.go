@@ -48,6 +48,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zaibyte/pkg/xbytes"
+
 	"github.com/stretchr/testify/assert"
 
 	"github.com/templexxx/tsc"
@@ -62,11 +64,11 @@ import (
 	"github.com/zaibyte/pkg/xrpc"
 )
 
-func testPutFunc(reqid uint64, oid [16]byte, objData xrpc.Byteser) error {
+func testPutFunc(reqid uint64, oid [16]byte, objData xbytes.Buffer) error {
 	return nil
 }
 
-func testGetFunc(reqid uint64, oid [16]byte) (objData xrpc.Byteser, err error) {
+func testGetFunc(reqid uint64, oid [16]byte) (objData xbytes.Buffer, err error) {
 	return
 }
 
@@ -83,7 +85,7 @@ func TestRequestTimeout(t *testing.T) {
 
 	addr := getRandomAddr()
 
-	s := NewServer(addr, nil, func(reqid uint64, oid [16]byte, objData xrpc.Byteser) error {
+	s := NewServer(addr, nil, func(reqid uint64, oid [16]byte, objData xbytes.Buffer) error {
 		time.Sleep(10 * time.Millisecond)
 		return nil
 	}, testGetFunc, testDeleteFunc)
@@ -117,14 +119,14 @@ func TestClient_GetObj(t *testing.T) {
 
 	stor := make(map[[16]byte][]byte)
 
-	s := NewServer(addr, nil, func(reqid uint64, oid [16]byte, objData xrpc.Byteser) error {
+	s := NewServer(addr, nil, func(reqid uint64, oid [16]byte, objData xbytes.Buffer) error {
 		o := make([]byte, len(objData.Bytes()))
 		copy(o, objData.Bytes())
 		stor[oid] = o
 		return nil
-	}, func(reqid uint64, oid [16]byte) (objData xrpc.Byteser, err error) {
+	}, func(reqid uint64, oid [16]byte) (objData xbytes.Buffer, err error) {
 		_, _, _, _, size, _ := uid.ParseOIDBytes(oid[:])
-		objData = xrpc.GetNBytes(int(size))
+		objData = xbytes.GetNBytes(int(size))
 		o := stor[oid]
 		objData.Write(o)
 		return
@@ -138,7 +140,7 @@ func TestClient_GetObj(t *testing.T) {
 	c.Start()
 	defer c.Stop()
 
-	req := make([]byte, xrpc.MaxBytesSizeInPool*2)
+	req := make([]byte, xbytes.MaxBytesSizeInPool*2)
 	rand.Read(req)
 
 	for i := 0; i < 7; i++ {
@@ -182,20 +184,20 @@ func TestClient_DeleteObj(t *testing.T) {
 	stor := make(map[[16]byte][]byte)
 
 	s := NewServer(addr, nil,
-		func(reqid uint64, oid [16]byte, objData xrpc.Byteser) error {
+		func(reqid uint64, oid [16]byte, objData xbytes.Buffer) error {
 			o := make([]byte, len(objData.Bytes()))
 			copy(o, objData.Bytes())
 			stor[oid] = o
 			return nil
 		},
-		func(reqid uint64, oid [16]byte) (objData xrpc.Byteser, err error) {
+		func(reqid uint64, oid [16]byte) (objData xbytes.Buffer, err error) {
 
 			o, ok := stor[oid]
 			if !ok {
 				return nil, xrpc.ErrNotFound
 			}
 			_, _, _, _, size, _ := uid.ParseOIDBytes(oid[:])
-			objData = xrpc.GetNBytes(int(size))
+			objData = xbytes.GetNBytes(int(size))
 			objData.Write(o)
 			return
 		},
@@ -216,7 +218,7 @@ func TestClient_DeleteObj(t *testing.T) {
 	c.Start()
 	defer c.Stop()
 
-	req := make([]byte, xrpc.MaxBytesSizeInPool*2)
+	req := make([]byte, xbytes.MaxBytesSizeInPool*2)
 	rand.Read(req)
 
 	for i := 0; i < 7; i++ {
@@ -287,7 +289,7 @@ func TestClient_GetObj_Concurrency(t *testing.T) {
 	stor := new(sync.Map)
 
 	s := NewServer(addr, nil,
-		func(reqid uint64, oid [16]byte, objData xrpc.Byteser) error {
+		func(reqid uint64, oid [16]byte, objData xbytes.Buffer) error {
 			_, _, _, _, size, _ := uid.ParseOIDBytes(oid[:])
 			o := make([]byte, size)
 			n, err := objData.Read(o)
@@ -299,9 +301,9 @@ func TestClient_GetObj_Concurrency(t *testing.T) {
 			}
 			stor.Store(oid, o)
 			return nil
-		}, func(reqid uint64, oid [16]byte) (objData xrpc.Byteser, err error) {
+		}, func(reqid uint64, oid [16]byte) (objData xbytes.Buffer, err error) {
 			_, _, _, _, size, _ := uid.ParseOIDBytes(oid[:])
-			objData = xrpc.GetNBytes(int(size))
+			objData = xbytes.GetNBytes(int(size))
 			v, ok := stor.Load(oid)
 			if !ok {
 				return nil, xrpc.ErrNotFound
@@ -373,7 +375,7 @@ func TestClient_GetObj_Error_Concurrency(t *testing.T) {
 	stor := new(sync.Map)
 
 	s := NewServer(addr, nil,
-		func(reqid uint64, oid [16]byte, objData xrpc.Byteser) error {
+		func(reqid uint64, oid [16]byte, objData xbytes.Buffer) error {
 			_, _, _, _, size, _ := uid.ParseOIDBytes(oid[:])
 			o := make([]byte, size)
 			n, err := objData.Read(o)
@@ -385,7 +387,7 @@ func TestClient_GetObj_Error_Concurrency(t *testing.T) {
 			}
 			stor.Store(oid, o)
 			return nil
-		}, func(reqid uint64, oid [16]byte) (objData xrpc.Byteser, err error) {
+		}, func(reqid uint64, oid [16]byte) (objData xbytes.Buffer, err error) {
 			err = xrpc.ErrNotFound
 			return
 		}, testDeleteFunc)
@@ -451,7 +453,7 @@ func TestClient_GetObj_ConcurrencyTLS(t *testing.T) {
 	stor := new(sync.Map)
 
 	s := NewServer(addr, serverCfg,
-		func(reqid uint64, oid [16]byte, objData xrpc.Byteser) error {
+		func(reqid uint64, oid [16]byte, objData xbytes.Buffer) error {
 			_, _, _, _, size, _ := uid.ParseOIDBytes(oid[:])
 			o := make([]byte, size)
 			n, err := objData.Read(o)
@@ -463,9 +465,9 @@ func TestClient_GetObj_ConcurrencyTLS(t *testing.T) {
 			}
 			stor.Store(oid, o)
 			return nil
-		}, func(reqid uint64, oid [16]byte) (objData xrpc.Byteser, err error) {
+		}, func(reqid uint64, oid [16]byte) (objData xbytes.Buffer, err error) {
 			_, _, _, _, size, _ := uid.ParseOIDBytes(oid[:])
-			objData = xrpc.GetNBytes(int(size))
+			objData = xbytes.GetNBytes(int(size))
 			v, ok := stor.Load(oid)
 			if !ok {
 				return nil, xrpc.ErrNotFound

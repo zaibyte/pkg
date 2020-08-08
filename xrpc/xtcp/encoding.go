@@ -20,6 +20,8 @@ import (
 	"net"
 	"time"
 
+	"github.com/zaibyte/pkg/xbytes"
+
 	"github.com/zaibyte/pkg/xdigest"
 
 	"github.com/zaibyte/pkg/xrpc"
@@ -49,7 +51,7 @@ func newDecoder(conn net.Conn, bufsize int, hash *xdigest.Digest) *decoder {
 
 type message struct {
 	header header
-	body   xrpc.Byteser
+	body   xbytes.Buffer
 }
 
 func (d *decoder) decode(msg *message, headerBuf []byte) error {
@@ -80,7 +82,7 @@ func (d *decoder) decode(msg *message, headerBuf []byte) error {
 		return nil
 	}
 
-	msg.body = xrpc.GetNBytes(int(n))
+	msg.body = xbytes.GetNBytes(int(n))
 
 	buf := msg.body.Bytes()[:n]
 	_, err = readAtLeast(d.br, buf, int(n), d.hash)

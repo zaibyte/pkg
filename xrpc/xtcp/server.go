@@ -48,13 +48,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/zaibyte/pkg/xerrors"
-
+	"github.com/zaibyte/pkg/xbytes"
 	"github.com/zaibyte/pkg/xdigest"
-
-	"github.com/zaibyte/pkg/xrpc"
-
+	"github.com/zaibyte/pkg/xerrors"
 	"github.com/zaibyte/pkg/xlog"
+	"github.com/zaibyte/pkg/xrpc"
 )
 
 // Server implements RPC server.
@@ -299,9 +297,9 @@ type serverMessage struct {
 	reqid    uint64
 	oid      [16]byte
 	bodySize uint32
-	reqbody  xrpc.Byteser
+	reqbody  xbytes.Buffer
 
-	resp xrpc.Byteser
+	resp xbytes.Buffer
 	err  error
 }
 
@@ -422,7 +420,7 @@ func (s *Server) serveRequest(responsesChan chan<- *serverMessage, stopChan <-ch
 	<-workersCh
 }
 
-func (s *Server) callHandlerWithRecover(reqid uint64, method uint8, oid [16]byte, reqData xrpc.Byteser) (resp xrpc.Byteser, err error) {
+func (s *Server) callHandlerWithRecover(reqid uint64, method uint8, oid [16]byte, reqData xbytes.Buffer) (resp xbytes.Buffer, err error) {
 	defer func() {
 		if x := recover(); x != nil {
 			stackTrace := make([]byte, 1<<20)
