@@ -45,5 +45,5 @@ func IsBroken(err error) bool {
 
 // GetFreeSize returns disk free space size (unit: Byte).
 func GetFreeSize(path string) (free uint64, err error) {
-	return getFreeSize(path)
+	return getFreeSpace(path)
 }
