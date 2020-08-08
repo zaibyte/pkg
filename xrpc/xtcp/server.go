@@ -169,7 +169,7 @@ func (s *Server) Start() error {
 
 	workersCh := make(chan struct{}, s.Concurrency)
 	s.stopWg.Add(1)
-	go serverHandler(s, workersCh)
+	go s.serverHandler(workersCh)
 	return nil
 }
 
@@ -192,7 +192,7 @@ func (s *Server) Serve() error {
 	return nil
 }
 
-func serverHandler(s *Server, workersCh chan struct{}) {
+func (s *Server) serverHandler(workersCh chan struct{}) {
 	defer s.stopWg.Done()
 
 	var conn net.Conn
@@ -230,11 +230,11 @@ func serverHandler(s *Server, workersCh chan struct{}) {
 		}
 
 		s.stopWg.Add(1)
-		go serverHandleConnection(s, conn, workersCh)
+		go s.serverHandleConnection(conn, workersCh)
 	}
 }
 
-func serverHandleConnection(s *Server, conn net.Conn, workersCh chan struct{}) {
+func (s *Server) serverHandleConnection(conn net.Conn, workersCh chan struct{}) {
 	defer s.stopWg.Done()
 
 	var stopping atomic.Value
@@ -271,10 +271,10 @@ func serverHandleConnection(s *Server, conn net.Conn, workersCh chan struct{}) {
 	stopChan := make(chan struct{})
 
 	readerDone := make(chan struct{})
-	go serverReader(s, conn, responsesChan, stopChan, readerDone, workersCh)
+	go s.serverReader(conn, responsesChan, stopChan, readerDone, workersCh)
 
 	writerDone := make(chan struct{})
-	go serverWriter(s, conn, responsesChan, stopChan, writerDone)
+	go s.serverWriter(conn, responsesChan, stopChan, writerDone)
 
 	select {
 	case <-readerDone:
@@ -321,7 +321,7 @@ func (s *serverMessage) reset() {
 	s.err = nil
 }
 
-func serverReader(s *Server, r net.Conn, responsesChan chan<- *serverMessage,
+func (s *Server) serverReader(r net.Conn, responsesChan chan<- *serverMessage,
 	stopChan <-chan struct{}, done chan<- struct{}, workersCh chan struct{}) {
 
 	defer func() {
@@ -339,8 +339,9 @@ func serverReader(s *Server, r net.Conn, responsesChan chan<- *serverMessage,
 	req := &message{
 		header: new(reqHeader),
 	}
+	headerBuf := make([]byte, reqHeaderSize) // reqHeaderSize is bigger than respHeaderSize.
 	for {
-		err := dec.decode(req)
+		err := dec.decode(req, headerBuf)
 		if err != nil {
 			if err == xrpc.ErrTimeout {
 				continue // Keeping trying to read request header.
@@ -389,15 +390,15 @@ func serverReader(s *Server, r net.Conn, responsesChan chan<- *serverMessage,
 		}
 
 		// Haven read the request, handle request async, free the conn for the next request reading.
-		go serveRequest(s, responsesChan, stopChan, m, workersCh)
+		go s.serveRequest(responsesChan, stopChan, m, workersCh)
 	}
 }
 
-func serveRequest(s *Server, responsesChan chan<- *serverMessage, stopChan <-chan struct{}, m *serverMessage, workersCh <-chan struct{}) {
+func (s *Server) serveRequest(responsesChan chan<- *serverMessage, stopChan <-chan struct{}, m *serverMessage, workersCh <-chan struct{}) {
 
 	if m.err == nil {
 		reqBody := m.reqbody
-		resp, err := callHandlerWithRecover(s, m.reqid, m.method, m.oid, reqBody)
+		resp, err := s.callHandlerWithRecover(m.reqid, m.method, m.oid, reqBody)
 		m.resp = resp
 		m.err = err
 	}
@@ -421,7 +422,7 @@ func serveRequest(s *Server, responsesChan chan<- *serverMessage, stopChan <-cha
 	<-workersCh
 }
 
-func callHandlerWithRecover(s *Server, reqid uint64, method uint8, oid [16]byte, reqData xrpc.Byteser) (resp xrpc.Byteser, err error) {
+func (s *Server) callHandlerWithRecover(reqid uint64, method uint8, oid [16]byte, reqData xrpc.Byteser) (resp xrpc.Byteser, err error) {
 	defer func() {
 		if x := recover(); x != nil {
 			stackTrace := make([]byte, 1<<20)
@@ -454,7 +455,7 @@ func isServerStop(stopChan <-chan struct{}) bool {
 	}
 }
 
-func serverWriter(s *Server, w net.Conn, responsesChan <-chan *serverMessage, stopChan <-chan struct{}, done chan<- struct{}) {
+func (s *Server) serverWriter(w net.Conn, responsesChan <-chan *serverMessage, stopChan <-chan struct{}, done chan<- struct{}) {
 	defer func() { close(done) }()
 
 	t := time.NewTimer(s.FlushDelay)
@@ -462,6 +463,7 @@ func serverWriter(s *Server, w net.Conn, responsesChan <-chan *serverMessage, st
 	enc := newEncoder(w, s.SendBufferSize)
 	msg := new(message)
 	header := new(respHeader)
+	headerBuf := make([]byte, reqHeaderSize) // reqHeaderSize is bigger than respHeaderSize.
 	for {
 		var m *serverMessage
 
@@ -507,7 +509,7 @@ func serverWriter(s *Server, w net.Conn, responsesChan <-chan *serverMessage, st
 		m.reset()
 		serverMessagePool.Put(m)
 
-		if err := enc.encode(msg); err != nil {
+		if err := enc.encode(msg, headerBuf); err != nil {
 			xlog.ErrorIDf(reqid, "failed to send response to: %s: %s", w.RemoteAddr().String(), err)
 			return
 		}

@@ -209,7 +209,7 @@ func (c *Client) Start() error {
 
 	for i := 0; i < c.Conns; i++ {
 		c.stopWg.Add(1)
-		go clientHandler(c)
+		go c.clientHandler()
 	}
 	return nil
 }
@@ -304,9 +304,9 @@ func (c *Client) callAsync(reqid uint64, method uint8, oid [16]byte, body []byte
 
 	ar = acquireAsyncResult()
 
-	// In case of after returning, the data will still in the client write process,
+	// In case of after returning (meet error), the caller will drop the data,
+	// but it's still in the client write process,
 	// it may sent dirty data. Copy is a safe choice.
-	// TODO better way to avoiding copy.
 	if body != nil {
 		reqData := xrpc.GetNBytes(len(body))
 		_, _ = reqData.Write(body)
@@ -349,7 +349,7 @@ func (c *Client) callAsync(reqid uint64, method uint8, oid [16]byte, body []byte
 	}
 }
 
-func clientHandler(c *Client) {
+func (c *Client) clientHandler() {
 	defer c.stopWg.Done()
 
 	var conn net.Conn
@@ -384,7 +384,7 @@ func clientHandler(c *Client) {
 			continue
 		}
 
-		clientHandleConnection(c, conn)
+		c.clientHandleConnection(conn)
 
 		select {
 		case <-c.stopChan:
@@ -394,7 +394,7 @@ func clientHandler(c *Client) {
 	}
 }
 
-func clientHandleConnection(c *Client, conn net.Conn) {
+func (c *Client) clientHandleConnection(conn net.Conn) {
 
 	err := sendHandshake(conn)
 	if err != nil {
@@ -409,10 +409,10 @@ func clientHandleConnection(c *Client, conn net.Conn) {
 	var pendingRequestsLock sync.Mutex // Only two goroutine here, map with mutex is faster than sync.Map.
 
 	writerDone := make(chan error, 1)
-	go clientWriter(c, conn, pendingRequests, &pendingRequestsLock, stopChan, writerDone)
+	go c.clientWriter(conn, pendingRequests, &pendingRequestsLock, stopChan, writerDone)
 
 	readerDone := make(chan error, 1)
-	go clientReader(c, conn, pendingRequests, &pendingRequestsLock, readerDone)
+	go c.clientReader(conn, pendingRequests, &pendingRequestsLock, readerDone)
 
 	select {
 	case err = <-writerDone:
@@ -450,7 +450,7 @@ func sendHandshake(conn net.Conn) error {
 	return nil
 }
 
-func clientWriter(c *Client, w net.Conn, pendingRequests map[uint64]*asyncResult, pendingRequestsLock *sync.Mutex,
+func (c *Client) clientWriter(w net.Conn, pendingRequests map[uint64]*asyncResult, pendingRequestsLock *sync.Mutex,
 	stopChan <-chan struct{}, done chan<- error) {
 
 	var err error
@@ -464,6 +464,7 @@ func clientWriter(c *Client, w net.Conn, pendingRequests map[uint64]*asyncResult
 	var flushChan <-chan time.Time
 
 	var msgID uint64 = 1
+	headerBuf := make([]byte, reqHeaderSize) // reqHeaderSize is bigger than respHeaderSize.
 
 	for {
 		msgID++
@@ -540,7 +541,7 @@ func clientWriter(c *Client, w net.Conn, pendingRequests map[uint64]*asyncResult
 		msg.header = header
 		msg.body = ar.reqData
 
-		if err = enc.encode(msg); err != nil {
+		if err = enc.encode(msg, headerBuf); err != nil {
 			xlog.ErrorIDf(ar.reqid, "failed to send request to: %s: %s", c.Addr, err)
 			return
 		}
@@ -549,7 +550,7 @@ func clientWriter(c *Client, w net.Conn, pendingRequests map[uint64]*asyncResult
 	}
 }
 
-func clientReader(c *Client, r net.Conn, pendingRequests map[uint64]*asyncResult, pendingRequestsLock *sync.Mutex, done chan<- error) {
+func (c *Client) clientReader(r net.Conn, pendingRequests map[uint64]*asyncResult, pendingRequestsLock *sync.Mutex, done chan<- error) {
 	var err error
 	defer func() {
 		if r := recover(); r != nil {
@@ -568,8 +569,9 @@ func clientReader(c *Client, r net.Conn, pendingRequests map[uint64]*asyncResult
 	msg := &message{
 		header: new(respHeader),
 	}
+	headerBuf := make([]byte, reqHeaderSize) // reqHeaderSize is bigger than respHeaderSize.
 	for {
-		err := dec.decode(msg)
+		err := dec.decode(msg, headerBuf)
 		if err != nil {
 			if err == xrpc.ErrTimeout {
 				msg.body = nil

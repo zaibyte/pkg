@@ -43,6 +43,8 @@ xtcp gets 3x better than gorpc. (Both of them are using same configs, including 
 
 ### TODO
 
+Combine requests, improving throughput.
+
 ### Given up
 
 #### Conn Deadline

@@ -55,12 +55,15 @@ func BenchmarkClient_Put(b *testing.B) {
 	addr := getRandomAddr()
 
 	s := NewServer(addr, nil, testPutFunc, testGetFunc, testDeleteFunc)
+
 	if err := s.Start(); err != nil {
 		b.Fatalf("cannot start server: %s", err)
 	}
 	defer s.Stop()
 
 	c := NewClient(addr, nil)
+	c.Conns = 2
+
 	c.Start()
 	defer c.Stop()
 

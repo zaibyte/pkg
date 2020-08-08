@@ -52,14 +52,14 @@ type message struct {
 	body   xrpc.Byteser
 }
 
-func (d *decoder) decode(msg *message) error {
+func (d *decoder) decode(msg *message, headerBuf []byte) error {
 
 	var hbuf []byte
 	_, ok := msg.header.(*reqHeader)
 	if ok {
-		hbuf = make([]byte, reqHeaderSize)
+		hbuf = headerBuf[:reqHeaderSize]
 	} else {
-		hbuf = make([]byte, respHeaderSize)
+		hbuf = headerBuf[:respHeaderSize]
 	}
 	_, err := io.ReadFull(d.br, hbuf)
 	if err != nil {
@@ -144,13 +144,13 @@ func newEncoder(conn net.Conn, bufsize int) *encoder {
 	return &encoder{bw: bufio.NewWriterSize(w, bufsize)}
 }
 
-func (e *encoder) encode(msg *message) error {
+func (e *encoder) encode(msg *message, headerBuf []byte) error {
 	var hbuf []byte
 	_, ok := msg.header.(*reqHeader)
 	if ok {
-		hbuf = make([]byte, reqHeaderSize)
+		hbuf = headerBuf[:reqHeaderSize]
 	} else {
-		hbuf = make([]byte, respHeaderSize)
+		hbuf = headerBuf[:respHeaderSize]
 	}
 	_ = msg.header.encode(hbuf)
 	_, err := e.bw.Write(hbuf)
