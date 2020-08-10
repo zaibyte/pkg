@@ -103,6 +103,7 @@ const (
 	checksumMismatch     = 9
 	invalidMethod        = 10
 	requestQueueOverflow = 11
+	timeBackwards        = 12
 )
 
 // Error table.
@@ -119,6 +120,7 @@ var errnoStr = [...]string{
 	checksumMismatch:     "checksum mismatch",
 	invalidMethod:        "invalid method",
 	requestQueueOverflow: "request queue overflow",
+	timeBackwards:        "time gone backwards",
 }
 
 var (
@@ -133,4 +135,5 @@ var (
 	ErrChecksumMismatch     = Errno(checksumMismatch)
 	ErrInvalidMethod        = Errno(invalidMethod)
 	ErrRequestQueueOverflow = Errno(requestQueueOverflow)
+	ErrTimeBackwards        = Errno(timeBackwards)
 )

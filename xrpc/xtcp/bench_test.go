@@ -62,17 +62,17 @@ func BenchmarkClient_Put(b *testing.B) {
 	defer s.Stop()
 
 	c := NewClient(addr, nil)
-	c.Conns = 2
+	c.Conns = 4
 
 	c.Start()
 	defer c.Stop()
 
-	objData := make([]byte, 16)
+	objData := make([]byte, 3952)
 	rand.Read(objData)
 	digest := xdigest.Sum32(objData)
-	_, oid := uid.MakeOID(1, 1, digest, 16, uid.NormalObj)
+	_, oid := uid.MakeOID(1, 1, digest, 3952, uid.NormalObj)
 
-	b.SetParallelism(256)
+	b.SetParallelism(64)
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for i := 0; pb.Next(); i++ {
