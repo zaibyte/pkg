@@ -28,17 +28,21 @@
 package xdigest
 
 import (
-	"github.com/cespare/xxhash/v2"
+	"hash"
+	"hash/crc32"
+
 	"github.com/zaibyte/pkg/xstrconv"
 )
 
 type Digest struct {
-	xxh *xxhash.Digest
+	xxh hash.Hash32
 }
 
 // New creates a xdigest.
 func New() *Digest {
-	return &Digest{xxhash.New()}
+	// TODO use crc32 temporarily. Maybe use wyhash in future.
+	return &Digest{xxh: crc32.New(CrcTbl)}
+	//return &Digest{xxhash.New()}
 }
 
 // Write (via the embedded io.Writer interface) adds more data to the running hash.
@@ -68,7 +72,7 @@ func (d *Digest) Sum(b []byte) []byte {
 
 // Sum32 returns the current hash.
 func (d *Digest) Sum32() uint32 {
-	return uint32(d.xxh.Sum64())
+	return d.xxh.Sum32()
 }
 
 // Reset resets the Hash to its initial state.
@@ -91,10 +95,10 @@ func (d *Digest) BlockSize() int {
 
 // Sum32 computes the 32-bit xxHash_low32bit digest of b.
 func Sum32(b []byte) uint32 {
-	return uint32(xxhash.Sum64(b))
+	return Checksum(b) // TODO use crc temporarily
 }
 
-// Sum32String computes the 32-bit xxHash_low32bit digest of b.
-func Sum32String(s string) uint32 {
-	return Sum32(xstrconv.ToBytes(s))
-}
+//// Sum32String computes the 32-bit xxHash_low32bit digest of b.
+//func Sum32String(s string) uint32 {
+//	return Sum32(xstrconv.ToBytes(s))
+//}
