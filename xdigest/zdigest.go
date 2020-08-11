@@ -60,14 +60,7 @@ func (d *Digest) WriteString(s string) (n int, err error) {
 // Sum appends the current hash to b and returns the resulting slice.
 // It does not change the underlying hash state.
 func (d *Digest) Sum(b []byte) []byte {
-	s := d.Sum32()
-	return append(
-		b,
-		byte(s>>24),
-		byte(s>>16),
-		byte(s>>8),
-		byte(s),
-	)
+	return d.xxh.Sum(b)
 }
 
 // Sum32 returns the current hash.
@@ -90,7 +83,7 @@ func (d *Digest) Size() int {
 // of data, but it may operate more efficiently if all writes
 // are a multiple of the block size.
 func (d *Digest) BlockSize() int {
-	return 32
+	return d.xxh.BlockSize()
 }
 
 // Sum32 computes the 32-bit xxHash_low32bit digest of b.
