@@ -104,6 +104,7 @@ const (
 	invalidMethod        = 10
 	requestQueueOverflow = 11
 	timeBackwards        = 12
+	extentFull           = 13
 )
 
 // Error table.
@@ -121,6 +122,7 @@ var errnoStr = [...]string{
 	invalidMethod:        "invalid method",
 	requestQueueOverflow: "request queue overflow",
 	timeBackwards:        "time gone backwards",
+	extentFull:           "extent is full",
 }
 
 var (
@@ -136,4 +138,5 @@ var (
 	ErrInvalidMethod        = Errno(invalidMethod)
 	ErrRequestQueueOverflow = Errno(requestQueueOverflow)
 	ErrTimeBackwards        = Errno(timeBackwards)
+	ErrExtentFull           = Errno(extentFull)
 )
