@@ -105,6 +105,7 @@ const (
 	requestQueueOverflow = 11
 	timeBackwards        = 12
 	extentFull           = 13
+	diskWriteStall       = 15
 )
 
 // Error table.
@@ -123,6 +124,7 @@ var errnoStr = [...]string{
 	requestQueueOverflow: "request queue overflow",
 	timeBackwards:        "time gone backwards",
 	extentFull:           "extent is full",
+	diskWriteStall:       "disk write stall",
 }
 
 var (
@@ -139,4 +141,5 @@ var (
 	ErrRequestQueueOverflow = Errno(requestQueueOverflow)
 	ErrTimeBackwards        = Errno(timeBackwards)
 	ErrExtentFull           = Errno(extentFull)
+	ErrDiskWriteStall       = Errno(diskWriteStall)
 )
