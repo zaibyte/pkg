@@ -25,6 +25,29 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestOIDMinMax(t *testing.T) {
+
+	_, min := MakeOID(0, 0, 0, 0, NormalObj)
+	boxID, groupID, _, digest, size, otype, err := ParseOID(min)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if boxID != 0 || groupID != 0 ||
+		digest != 0 || size != 0 || otype != NormalObj {
+		t.Fatal("min misamtch")
+	}
+
+	_, max := MakeOID(1<<10-1, 1<<22-1, 1<<32-1, 1<<22-1, NormalObj)
+	boxID, groupID, _, digest, size, otype, err = ParseOID(max)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if boxID != 1<<10-1 || groupID != 1<<22-1 ||
+		digest != 1<<32-1 || size != 1<<22-1 || otype != NormalObj {
+		t.Fatal("max misamtch")
+	}
+}
+
 func TestOID(t *testing.T) {
 
 	oidStrs := new(sync.Map)
