@@ -103,31 +103,28 @@ func (s *Server) AddHandler(method, path string, handler httprouter.Handle, limi
 	s.router.Handle(method, path, s.must(handler))
 }
 
+// GetHandler gets Server's http.Handler.
+func (s *Server) GetHandler() http.Handler {
+	return s.srv.Handler
+}
+
 // Start starts the Server.
 func (s *Server) Start() {
 
 	go func() {
 		if s.cfg.Encrypted && s.cfg.CertFile != "" && s.cfg.KeyFile != "" {
-			if err := s.srv.ListenAndServeTLS(s.cfg.CertFile, s.cfg.KeyFile); err != nil {
-				log.Fatal(err)
-			}
+			_ = s.srv.ListenAndServeTLS(s.cfg.CertFile, s.cfg.KeyFile)
 		} else {
-			if err := s.srv.ListenAndServe(); err != nil {
-				log.Fatal(err)
-			}
+			_ = s.srv.ListenAndServe()
 		}
 	}()
 }
 
 // Close closes Server.
-func (s *Server) Close() error {
+func (s *Server) Close() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 	defer cancel()
-	err := s.srv.Shutdown(ctx)
-	if err != nil {
-		return err
-	}
-	return s.srv.Close()
+	_ = s.srv.Shutdown(ctx)
 }
 
 // must adds the headers which zai must have and check request body.

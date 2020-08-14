@@ -44,7 +44,6 @@ func init() {
 	})
 	testServer = httptest.NewServer(srv.srv.Handler)
 	testSrvAddr = testServer.URL
-
 	testClient, _ = NewDefaultClient()
 
 }
