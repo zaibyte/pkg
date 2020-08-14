@@ -123,7 +123,11 @@ func (s *Server) Start() {
 func (s *Server) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 	defer cancel()
-	return s.srv.Shutdown(ctx)
+	err := s.srv.Shutdown(ctx)
+	if err != nil {
+		return err
+	}
+	return s.srv.Close()
 }
 
 // must adds the headers which zai must have and check request body.
