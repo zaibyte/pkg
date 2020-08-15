@@ -398,6 +398,9 @@ func (s *Server) serveRequest(responsesChan chan<- *serverMessage, stopChan <-ch
 		reqBody := m.reqbody
 		resp, err := s.callHandlerWithRecover(m.reqid, m.method, m.oid, reqBody)
 		m.resp = resp
+		if err != nil {
+			m.resp = nil
+		}
 		m.err = err
 	}
 
