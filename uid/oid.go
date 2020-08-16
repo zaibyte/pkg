@@ -19,7 +19,9 @@ package uid
 import (
 	"encoding/binary"
 	"sync"
-	"sync/atomic"
+	"time"
+
+	"github.com/templexxx/tsc"
 
 	"github.com/templexxx/xhex"
 
@@ -40,6 +42,18 @@ import (
 // size: 24bit
 // otype: 8bit
 
+const (
+	// epoch is an Unix time.
+	// 2020-06-03T08:39:34.000+0800.
+	epoch     int64 = 1591144774
+	epochNano       = epoch * int64(time.Second)
+	// doom is the zai's max Unix time.
+	// It will reach the end after 136 years from epoch.
+	doom int64 = 5880040774 // epoch + 136 years (about 2^32 seconds).
+	// maxTS is the zai's max timestamp.
+	maxTS = uint32(doom - epoch)
+)
+
 // Object types.
 const (
 	NormalObj uint8 = 1 // Normal Object, maximum size is 8MB.
@@ -59,9 +73,19 @@ var oidMPool = sync.Pool{
 // Returns ts & hex codes.
 func MakeOID(boxID, groupID, digest, size uint32, otype uint8) (uint32, string) {
 
-	ts := atomic.LoadUint32(&ticker.ts)
+	ts := GetOidTS()
 
 	return ts, MakeOIDWithTS(boxID, groupID, ts, digest, size, otype)
+}
+
+func GetOidTS() uint32 {
+	now := tsc.UnixNano()
+	sec := now / int64(time.Second)
+	ts := uint32(sec - epoch)
+	if ts >= maxTS {
+		panic("zai met its doom")
+	}
+	return ts
 }
 
 // MakeOIDWithTS makes oid with provided ts.

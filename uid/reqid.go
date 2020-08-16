@@ -57,3 +57,9 @@ func ParseReqID(reqID uint64) (t time.Time) {
 	ts := reqID & reqTSMask
 	return TsNanoToTime(ts)
 }
+
+// TsNanoToTime converts zai nanosecond ts to time.
+func TsNanoToTime(ts uint64) time.Time {
+	nano := int64(ts) + epochNano
+	return time.Unix(0, nano)
+}

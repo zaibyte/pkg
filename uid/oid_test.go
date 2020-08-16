@@ -19,7 +19,6 @@ package uid
 import (
 	"runtime"
 	"sync"
-	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -53,7 +52,7 @@ func TestOID(t *testing.T) {
 	oidStrs := new(sync.Map)
 
 	// Because it's fast, second ts won't change.
-	expTime := atomic.LoadUint32(&ticker.ts)
+	expTS := GetOidTS()
 
 	wg := new(sync.WaitGroup)
 	n := runtime.NumCPU()
@@ -96,7 +95,7 @@ func TestOID(t *testing.T) {
 
 			assert.Equal(t, expboxID, boxID)
 			assert.Equal(t, expextID, extID)
-			assert.Equal(t, expTime, ts)
+			assert.Equal(t, expTS, ts)
 			assert.Equal(t, expdigest, digest)
 			assert.Equal(t, expsize, size)
 			assert.Equal(t, expotype, otype)
